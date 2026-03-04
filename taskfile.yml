@@ -1,0 +1,42 @@
+version: "3"
+
+tasks:
+  tpu:init:
+    desc: Initialize OpenTofu in infra/tofu
+    cmds:
+      - tofu -chdir=infra/tofu init
+
+  tpu:plan:
+    desc: Plan OpenTofu changes for TPU VM
+    cmds:
+      - tofu -chdir=infra/tofu plan
+
+  tpu:apply:
+    desc: Apply OpenTofu changes for TPU VM
+    cmds:
+      - tofu -chdir=infra/tofu apply
+
+  tpu:destroy:
+    desc: Destroy TPU VM via OpenTofu
+    cmds:
+      - tofu -chdir=infra/tofu destroy
+
+  tpu:ssh:
+    desc: SSH to TPU VM from OpenTofu outputs
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+
+  tpu:start:
+    desc: Start TPU VM from OpenTofu outputs
+    cmds:
+      - gcloud compute tpus tpu-vm start "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+
+  tpu:stop:
+    desc: Stop TPU VM from OpenTofu outputs
+    cmds:
+      - gcloud compute tpus tpu-vm stop "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+
+  tpu:sync:
+    desc: Sync tracked and non-ignored files to TPU VM
+    cmds:
+      - sh -lc 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | gcloud compute tpus tpu-vm ssh "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)" --command "mkdir -p ~/jaxley-extracellular && tar -xf - -C ~/jaxley-extracellular"'

@@ -1,0 +1,119 @@
+[project]
+name = "jaxley-extracellular"
+version = "0.1.0"
+description = "Extracellular stimulation experiments."
+readme = "README.md"
+authors = [
+  { name = "Marco Christiani", email = "mchristiani2017@gmail.com" }
+]
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  # Core JAX runtime. Backend-specific pieces are in dependency groups.
+  "jax==0.8.1",
+  # Core deps
+  "numpy>=1.26",
+  "matplotlib>=3.8",
+  # Jaxley ecosystem
+  "jaxley>=0.8.0",
+  "jaxley-mech>=0.2.0",
+  "jaxtyping>=0.3.9",
+]
+
+[project.scripts]
+jaxley-extracellular = "jaxley_extracellular.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.19.1",
+    "pyright>=1.1.408",
+    "ruff>=0.15.4",
+    "ty>=0.0.19",
+]
+gpu = [
+    "jax-cuda12-plugin==0.8.1",
+    "jax-cuda12-pjrt==0.8.1",
+]
+tpu = [
+    "jax[tpu]==0.8.1",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+  "-ra",
+  "--strict-markers",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  ".venv",
+  "dist",
+  "build",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "SIM", # flake8-simplify
+  "RUF", # ruff-specific
+]
+ignore = [
+  "E501", # line length (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jaxley_extracellular"]
+
+[tool.mypy]
+files = ["src"]
+pretty = true
+show_error_codes = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+strict = true
+
+# Many 3rd party deps lack complete stubs
+# ignore_missing_imports = true
+# implicit_reexport = false
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "strict"
+
+# Avoid turning missing third-party stubs into noise.
+reportMissingTypeStubs = "none"
+
+# 3rd party deps might expose partially-typed APIs.
+# Keep strict mode for our code, but dont error on unknown members/args from deps.
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+
+[tool.ty.environment]
+root = ["./src"]
+
+[tool.ty.terminal]
+output-format = "concise"

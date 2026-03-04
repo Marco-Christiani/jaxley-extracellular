@@ -1,0 +1,33 @@
+project_id       = "your-gcp-project"
+zone             = "us-central2-b"
+name             = "jx-tpu-dev"
+
+# List valid runtime images for this zone:
+#   gcloud compute tpus tpu-vm versions list --zone <zone> --project <project>
+#   (project may not be required)
+runtime_version  = "tpu-ubuntu2204-base"
+
+# List valid TPU sizes for this zone:
+#   gcloud compute tpus accelerator-types list --zone <zone> --project <project>
+#   (project may not be required)
+# Cost/testing: start with the smallest listed type and keep `spot = true`.
+# Typical progression (if available in-zone): v5litepod-8 -> v5litepod-16 -> v5litepod-32.
+accelerator_type = "v5litepod-8"
+
+# cost control
+spot             = true
+preemptible      = false
+
+# Pricing references:
+# - TPU VM pricing page: https://cloud.google.com/tpu/pricing
+# - Cost calculator: https://cloud.google.com/products/calculator
+
+# External IPs allow direct SSH from your local machine.
+network             = "default"
+subnetwork          = "default"
+enable_external_ips = true
+
+labels = {
+  owner = "marco"
+  env   = "dev"
+}
