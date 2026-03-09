@@ -1,29 +1,8 @@
 """Build the Jaxley-consistent voltage diffusion operator G.
 
-This module replicates Jaxley's internal `_compute_transition_matrix` /
-`build_exp_euler_transition_matrix` logic to reconstruct **G itself** (not
-the matrix exponential) from a top-level Jaxley module.
+G entries are in 1/ms, matching Jaxley's cable ODE:
 
-Key public function
--------------------
-    build_voltage_operator_G(module, params) -> jax.Array  shape (Ncomp, Ncomp)
-
-Units
------
-    G entries are in 1/ms  (equivalently mS/cm^2 divided by uF/cm^2, = kHz).
-    This is exactly the coefficient used in Jaxley's cable ODE:
-        dv/dt [mV/ms] = G [1/ms] @ v [mV]  +  membrane_terms
-
-Private internals accessed
---------------------------
-    module.base._comp_edges       -- pandas DataFrame of directed edges
-    module.base._n_nodes          -- int, total nodes including branchpoints
-    module.base._internal_node_inds -- int array, indices of real compartments
-    params["axial_conductances"]["v"] -- per-edge conductances, shape (C,)
-
-All of these are set during normal Jaxley module initialisation and are
-stable across Jaxley 0.8.x.  We do NOT use `_exp_euler_solve_indexer`
-directly; instead we replicate the same indexer logic from `_comp_edges`.
+    dv/dt [mV/ms] = G [1/ms] @ v [mV] + membrane_terms
 """
 
 from __future__ import annotations

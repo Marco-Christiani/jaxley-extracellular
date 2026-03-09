@@ -58,8 +58,19 @@ def spike_latency_ms(
 ) -> Array:
     """Latency to first spike in milliseconds.
 
-    Returns ``T_ms`` (total trace duration) if no spike is detected,
-    keeping the output shape fixed for vmap.
+    Parameters
+    ----------
+    v_trace : Array, shape ``(T,)``
+    dt_ms : float
+        Simulation timestep in ms.
+    threshold_mV : float
+
+    Returns
+    -------
+    Array, shape ``()``, dtype float32
+        Time of first threshold crossing.  Equals ``T * dt_ms`` (total
+        trace duration) if no spike is detected, keeping the output
+        shape fixed for vmap.
     """
     idx = spike_latency_steps(v_trace, threshold_mV)
     return idx.astype(jnp.float32) * dt_ms

@@ -1,14 +1,4 @@
-"""High-level experiment runner for ECS waveform sweeps.
-
-Provides:
-- ``setup_hh_cable``: build a long HH cable with ECS infrastructure
-- ``simulate_waveform``: single waveform -> voltage trace -> features
-- ``run_sweep``: vmap over a batch of waveforms
-
-All functions are designed to be JIT/vmap-compatible for the traced
-parts (waveform -> features).  Model construction and G computation
-happen outside the traced region.
-"""
+"""High-level experiment runner for ECS waveform sweeps."""
 
 from __future__ import annotations
 
@@ -63,6 +53,22 @@ class ECSExperiment:
         dt_ms: float = 0.025,
         T_ms: float = 5.0,
     ):
+        """Set up an ECS experiment.
+
+        Parameters
+        ----------
+        module : jx.Module
+            Jaxley module with channels inserted and states initialised.
+            Will be ``.to_jax()``-ed internally.
+        electrode_pos : Array, shape ``(3,)``
+            Electrode xyz in um.
+        sigma : float
+            Extracellular conductivity in S/m (default 0.3, typical cortex).
+        dt_ms : float
+            Simulation timestep in ms.
+        T_ms : float
+            Total simulation duration in ms.
+        """
         ensure_compartment_centers(module)
         self.comp_xyz = jnp.asarray(get_compartment_xyz(module))
         self.electrode_pos = jnp.asarray(electrode_pos)

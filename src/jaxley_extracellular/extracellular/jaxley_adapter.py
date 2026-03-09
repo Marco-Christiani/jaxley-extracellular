@@ -1,26 +1,4 @@
-"""Glue layer between Jaxley modules and the extracellular stimulation pipeline.
-
-Coordinate preparation
-----------------------
-Jaxley does not guarantee that `module.nodes[["x","y","z"]]` is populated.
-`ensure_compartment_centers(module)` checks and calls `compute_xyz()` /
-`compute_compartment_centers()` as needed.
-
-High-level pipeline
--------------------
-    i_nA = build_ecs_stimuli_nA(module, phi_e_mV)
-
-Stimulus injection helpers
---------------------------
-    data_stimuli = package_data_stimuli(module, i_nA)
-    # pass data_stimuli into jx.integrate(..., data_stimuli=data_stimuli)
-
-Design constraints (Phase 1)
------------------------------
-- Top-level module only (no views): `module.base is module`.
-- Fixed morphology: G is computed once and reused for all T timesteps.
-- No Jaxley source modifications.
-"""
+"""Glue layer between Jaxley modules and the extracellular stimulation pipeline."""
 
 from __future__ import annotations
 

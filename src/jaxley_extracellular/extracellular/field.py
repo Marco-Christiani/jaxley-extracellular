@@ -1,31 +1,8 @@
 """Point-source electrode field model.
 
-Computes the extracellular potential phi_e at compartment centres due to a
-monopolar point-source electrode in a homogeneous, isotropic, infinite medium
-using the classical formula:
+    phi_e [mV] = I [uA] * 1e3 / (4 pi sigma [S/m] * r [um])
 
-    phi_e(r, t) = I(t) / (4 pi sigma |r - r_elec|)
-
-Units used throughout
----------------------
-    Electrode position / compartment centres : um
-    Electrode current                         : uA
-    Extracellular conductivity (sigma)        : S/m
-    Returned phi_e                            : mV
-
-Unit derivation
----------------
-    phi_e [V] = I [A] / (4 pi sigma [S/m] r [m])
-    With I in uA (*1e-6) and r in um (*1e-6):
-        phi_e [V] = I_uA*1e-6 / (4 pi sigma r_um*1e-6)
-                  = I_uA / (4 pi sigma r_um)
-    Multiply by 1e3 to convert V -> mV:
-        phi_e [mV] = I_uA * 1e3 / (4 pi sigma r_um)
-
-Public function
----------------
-    point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma,
-                           min_distance_um=1.0) -> jax.Array  (Ncomp, T) mV
+Units: positions in um, current in uA, sigma in S/m, phi_e in mV.
 """
 
 from __future__ import annotations
