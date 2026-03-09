@@ -213,12 +213,12 @@
         in {
           pytest = mkCheck "jaxley-extracellular-pytest" ''
             export JAX_PLATFORMS=cpu
-            ${testVenv}/bin/pytest -q ./tests
+            ${testVenv}/bin/pytest -q
           '';
 
           ruff = mkCheck "jaxley-extracellular-ruff" ''
-            ${testVenv}/bin/ruff check src tests scripts
-            ${testVenv}/bin/ruff format --check src tests scripts
+            ${testVenv}/bin/ruff check
+            ${testVenv}/bin/ruff format --check
           '';
 
           mypy = mkCheck "jaxley-extracellular-mypy" ''
@@ -227,11 +227,11 @@
 
           pyright = mkCheck "jaxley-extracellular-pyright" ''
             export PYRIGHT_PYTHON_NODEJS_PATH="${pkgs.nodejs_20}/bin/node"
-            ${testVenv}/bin/pyright
+            ${testVenv}/bin/pyright --project pyproject.toml
           '';
 
           ty = mkCheck "jaxley-extracellular-ty" ''
-            ${testVenv}/bin/ty check src tests scripts
+            ${testVenv}/bin/ty check
           '';
         };
       }

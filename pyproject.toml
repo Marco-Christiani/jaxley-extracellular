@@ -59,6 +59,7 @@ addopts = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+src = ["src", "tests", "scripts"]
 extend-exclude = [
   ".venv",
   "dist",
@@ -88,7 +89,7 @@ ignore = [
 known-first-party = ["jaxley_extracellular"]
 
 [tool.mypy]
-files = ["src"]
+files = ["src", "tests", "scripts"]
 pretty = true
 show_error_codes = true
 warn_unused_ignores = true
@@ -101,7 +102,7 @@ module = ["jaxley", "jaxley.*"]
 ignore_missing_imports = true
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "tests", "scripts"]
 typeCheckingMode = "strict"
 
 # Avoid turning missing third-party stubs into noise.
@@ -113,7 +114,7 @@ reportUnknownMemberType = "none"
 reportUnknownArgumentType = "none"
 
 [tool.ty.environment]
-root = ["./src"]
+root = ["./src", "./tests", "./scripts"]
 
 [tool.ty.terminal]
 output-format = "concise"

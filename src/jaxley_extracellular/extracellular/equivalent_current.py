@@ -1,7 +1,7 @@
 """Convert extracellular potential phi_e into Jaxley-compatible stimulus current.
 
-    f_ecs [mV/ms]  = G @ phi_e
-    i_ecs [nA]     = cm * f_ecs * area / 1e5
+f_ecs [mV/ms]  = G @ phi_e
+i_ecs [nA]     = cm * f_ecs * area / 1e5
 """
 
 from __future__ import annotations
