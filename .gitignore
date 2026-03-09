@@ -224,3 +224,4 @@ reference
 
 # outputs
 /results
+results/*.npz
