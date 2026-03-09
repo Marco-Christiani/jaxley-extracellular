@@ -12,18 +12,20 @@ happen outside the traced region.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from functools import partial
+from typing import Any, cast
 
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jaxley as jx
 import jaxley.channels as ch
+import numpy as np
 from jaxtyping import Array
 
-from jaxley_extracellular.extracellular.field import point_source_potential
-from jaxley_extracellular.extracellular.equivalent_current import phi_e_to_ecs_nA
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
+from jaxley_extracellular.extracellular.equivalent_current import phi_e_to_ecs_nA
+from jaxley_extracellular.extracellular.field import point_source_potential
 from jaxley_extracellular.extracellular.jaxley_adapter import (
     ensure_compartment_centers,
     get_compartment_xyz,
@@ -31,11 +33,12 @@ from jaxley_extracellular.extracellular.jaxley_adapter import (
 from jaxley_extracellular.extracellular.response import (
     extract_response_features,
 )
-
+from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 # ---------------------------------------------------------------------------
 # Model setup (not traced -- runs once)
 # ---------------------------------------------------------------------------
+
 
 class ECSExperiment:
     """Pre-computed static parts of an extracellular stimulation experiment.
@@ -69,7 +72,7 @@ class ECSExperiment:
         self.T = int(T_ms / dt_ms)
 
         module.to_jax()
-        params = module.get_all_parameters(pstate=[])
+        params: ECSParameters = module.get_all_parameters(pstate=[])
         self.G = build_voltage_operator_G(module, params)
         idx = np.asarray(module.base._internal_node_inds)
         self.cm = params["capacitance"][idx]
@@ -95,7 +98,10 @@ class ECSExperiment:
             Voltage at every compartment over time.
         """
         phi_e = point_source_potential(
-            self.comp_xyz, self.electrode_pos, waveform, self.sigma,
+            self.comp_xyz,
+            self.electrode_pos,
+            waveform,
+            self.sigma,
         )
         i_ecs = phi_e_to_ecs_nA(phi_e, self.G, self.cm, self.area)
         data_stimuli = self.module.data_stimulate(i_ecs)
@@ -106,7 +112,8 @@ class ECSExperiment:
             data_stimuli=data_stimuli,
             solver="bwd_euler",
         )
-        return v
+        # mypy treats jx.integrate as Any (untyped third-party API), so cast at boundary.
+        return cast(Array, v)  # pyright: ignore[reportUnnecessaryCast]
 
     def simulate_and_extract(
         self,
@@ -129,7 +136,9 @@ class ECSExperiment:
         """
         v = self.simulate_waveform(waveform)
         return extract_response_features(
-            v[record_comp], self.dt_ms, threshold_mV,
+            v[record_comp],
+            self.dt_ms,
+            threshold_mV,
         )
 
     # ------------------------------------------------------------------
@@ -154,12 +163,15 @@ class ECSExperiment:
         -------
         dict with keys mapping to Arrays of shape ``(B,)``.
         """
-        @jax.jit
-        @jax.vmap
-        def _run(w):
-            return self.simulate_and_extract(w, record_comp, threshold_mV)
 
-        return _run(waveforms)
+        run_one = partial(
+            self.simulate_and_extract,
+            record_comp=record_comp,
+            threshold_mV=threshold_mV,
+        )
+        run_batch = jax.jit(jax.vmap(run_one))
+        # pyright cannot infer vmapped dict outputs precisely; runtime shape is validated by tests.
+        return cast(dict[str, Array], run_batch(waveforms))
 
     # ------------------------------------------------------------------
     # Threshold search (vectorised binary search)
@@ -167,7 +179,7 @@ class ECSExperiment:
 
     def find_thresholds(
         self,
-        make_waveform_fn,
+        make_waveform_fn: Callable[[Array], Array],
         amp_lo: Array,
         amp_hi: Array,
         n_iter: int = 10,
@@ -198,16 +210,17 @@ class ECSExperiment:
         lo = jnp.asarray(amp_lo, dtype=jnp.float32)
         hi = jnp.asarray(amp_hi, dtype=jnp.float32)
 
-        @jax.jit
-        @jax.vmap
-        def _test_amplitude(amp):
-            w = make_waveform_fn(amp)
+        def _is_spiked_for_amplitude(amp: Array) -> Array:
+            w: Array = make_waveform_fn(amp)
             feats = self.simulate_and_extract(w, record_comp, threshold_mV)
             return feats["spiked"]
 
+        test_amplitude = jax.jit(jax.vmap(_is_spiked_for_amplitude))
+
         for _ in range(n_iter):
             mid = (lo + hi) / 2.0
-            spiked = _test_amplitude(mid)
+            # pyright widens vmapped return types; cast keeps the binary-search arrays typed.
+            spiked: Array = cast(Array, test_amplitude(mid))
             lo = jnp.where(spiked, lo, mid)
             hi = jnp.where(spiked, mid, hi)
 
@@ -217,6 +230,7 @@ class ECSExperiment:
 # ---------------------------------------------------------------------------
 # Convenience: standard HH cable experiment
 # ---------------------------------------------------------------------------
+
 
 def make_hh_cable_experiment(
     ncomp: int = 50,
@@ -273,5 +287,9 @@ def make_hh_cable_experiment(
     electrode_pos_arr = jnp.array(electrode_pos)
 
     return ECSExperiment(
-        branch, electrode_pos_arr, sigma, dt_ms, T_ms,
+        branch,
+        electrode_pos_arr,
+        sigma,
+        dt_ms,
+        T_ms,
     )

@@ -14,10 +14,10 @@ from __future__ import annotations
 import jax.numpy as jnp
 from jaxtyping import Array
 
-
 # ---------------------------------------------------------------------------
 # Elementary pulse shapes
 # ---------------------------------------------------------------------------
+
 
 def make_monophasic_pulse(
     amplitude_uA: float,
@@ -105,6 +105,7 @@ def make_biphasic_pulse(
 # Batch grid for vmap sweeps
 # ---------------------------------------------------------------------------
 
+
 def make_biphasic_grid(
     amplitudes_uA: Array,
     pulse_widths_ms: Array,
@@ -126,14 +127,16 @@ def make_biphasic_grid(
     grid_pws : Array, shape ``(N,)``
         Pulse width (ms) for each row.
     """
-    T = int(T_ms / dt_ms)
     rows = []
     amps_out = []
     pws_out = []
     for pw in pulse_widths_ms:
         for amp in amplitudes_uA:
             w = make_biphasic_pulse(
-                float(amp), float(pw), dt_ms, T_ms,
+                float(amp),
+                float(pw),
+                dt_ms,
+                T_ms,
                 cathodic_first=cathodic_first,
                 interphase_ms=interphase_ms,
                 delay_ms=delay_ms,

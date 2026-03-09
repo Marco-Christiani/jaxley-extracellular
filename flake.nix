@@ -217,8 +217,8 @@
           '';
 
           ruff = mkCheck "jaxley-extracellular-ruff" ''
-            ${testVenv}/bin/ruff check src tests
-            ${testVenv}/bin/ruff format --check src tests
+            ${testVenv}/bin/ruff check src tests scripts
+            ${testVenv}/bin/ruff format --check src tests scripts
           '';
 
           mypy = mkCheck "jaxley-extracellular-mypy" ''
@@ -231,7 +231,7 @@
           '';
 
           ty = mkCheck "jaxley-extracellular-ty" ''
-            ${testVenv}/bin/ty check src
+            ${testVenv}/bin/ty check src tests scripts
           '';
         };
       }

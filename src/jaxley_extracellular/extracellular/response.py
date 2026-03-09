@@ -5,6 +5,8 @@ All functions are pure JAX and compatible with ``jax.vmap`` / ``jax.jit``.
 
 from __future__ import annotations
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array
@@ -96,6 +98,7 @@ def extract_response_features(
 # Batched helper: extract features from a (B, T) voltage array
 # ---------------------------------------------------------------------------
 
+
 def extract_response_features_batch(
     v_batch: Array,
     dt_ms: float,
@@ -113,6 +116,9 @@ def extract_response_features_batch(
     -------
     dict with keys mapping to Arrays of shape ``(B,)``.
     """
-    return jax.vmap(
-        lambda v: extract_response_features(v, dt_ms, threshold_mV)
-    )(v_batch)
+    extractor = partial(
+        extract_response_features,
+        dt_ms=dt_ms,
+        threshold_mV=threshold_mV,
+    )
+    return jax.vmap(extractor)(v_batch)

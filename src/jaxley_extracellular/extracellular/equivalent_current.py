@@ -28,8 +28,8 @@ Public function
 
 from __future__ import annotations
 
-from jax import Array
 import jax.numpy as jnp
+from jax import Array
 
 
 def phi_e_to_ecs_nA(

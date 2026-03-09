@@ -11,11 +11,10 @@ Tests
 
 from __future__ import annotations
 
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jaxley as jx
-import pytest
+import numpy as np
 
 from jaxley_extracellular.extracellular.field import point_source_potential
 from jaxley_extracellular.extracellular.jaxley_adapter import (
@@ -25,12 +24,11 @@ from jaxley_extracellular.extracellular.jaxley_adapter import (
     package_data_stimuli,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-DT = 0.025   # ms
+DT = 0.025  # ms
 T_MAX = 2.0  # ms -- short run to keep tests fast
 N_STEPS = int(T_MAX / DT)
 
@@ -60,9 +58,7 @@ def _integrate_with_ecs(branch: jx.Branch, phi_e_mV: jnp.ndarray) -> np.ndarray:
     """Compute ECS stimuli from phi_e and run jx.integrate."""
     i_ecs = build_ecs_stimuli_nA(branch, phi_e_mV)
     data_stimuli = package_data_stimuli(branch, i_ecs)
-    v = jx.integrate(
-        branch, delta_t=DT, t_max=T_MAX, data_stimuli=data_stimuli, solver="bwd_euler"
-    )
+    v = jx.integrate(branch, delta_t=DT, t_max=T_MAX, data_stimuli=data_stimuli, solver="bwd_euler")
     return np.asarray(v)
 
 
@@ -144,10 +140,10 @@ def test_point_source_potential_units():
     """
     comp_xyz = np.array([[100.0, 0.0, 0.0]])  # 100 um away
     electrode_pos = np.array([0.0, 0.0, 0.0])
-    I = jnp.ones((1,))  # 1 uA, T=1 step
+    electrode_current = jnp.ones((1,))  # 1 uA, T=1 step
     sigma = 0.3  # S/m
 
-    phi_e = point_source_potential(comp_xyz, electrode_pos, I, sigma)
+    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
     expected = 1e3 / (4.0 * np.pi * 0.3 * 100.0)
 
     assert phi_e.shape == (1, 1)
@@ -159,8 +155,8 @@ def test_point_source_potential_shape():
     T = 20
     comp_xyz = np.random.default_rng(0).uniform(size=(Ncomp, 3)) * 200.0
     electrode_pos = np.array([500.0, 0.0, 0.0])  # far away
-    I = jnp.ones((T,))
-    phi_e = point_source_potential(comp_xyz, electrode_pos, I, sigma=0.3)
+    electrode_current = jnp.ones((T,))
+    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma=0.3)
     assert phi_e.shape == (Ncomp, T)
 
 
@@ -168,8 +164,8 @@ def test_point_source_potential_farther_smaller():
     """Farther compartments must see smaller phi_e."""
     comp_xyz = np.array([[50.0, 0.0, 0.0], [200.0, 0.0, 0.0]])
     electrode_pos = np.array([0.0, 0.0, 0.0])
-    I = jnp.ones((1,))
-    phi_e = point_source_potential(comp_xyz, electrode_pos, I, sigma=0.3)
+    electrode_current = jnp.ones((1,))
+    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma=0.3)
     assert float(phi_e[0, 0]) > float(phi_e[1, 0])
 
 
@@ -203,9 +199,7 @@ def test_full_pipeline_cable():
 
     branch.set("v", -65.0)
     branch.init_states()
-    v = jx.integrate(
-        branch, delta_t=DT, t_max=T_MAX, data_stimuli=data_stimuli, solver="bwd_euler"
-    )
+    v = jx.integrate(branch, delta_t=DT, t_max=T_MAX, data_stimuli=data_stimuli, solver="bwd_euler")
     v = jax.device_get(v)
 
     # Basic sanity: voltage stays in a physiological range during short run.

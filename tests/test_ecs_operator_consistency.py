@@ -15,14 +15,13 @@ Tests
 
 from __future__ import annotations
 
-import numpy as np
 import jax.numpy as jnp
 import jaxley as jx
+import numpy as np
 import pytest
 from jaxley.solver_voltage import _voltage_vectorfield
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,8 +31,8 @@ from jaxley_extracellular.extracellular.discretization import build_voltage_oper
 def _make_branch(ncomp: int = 4) -> jx.Branch:
     comp = jx.Compartment()
     branch = jx.Branch(comp, ncomp=ncomp)
-    branch.set("length", 100.0)   # um
-    branch.set("radius", 1.0)     # um
+    branch.set("length", 100.0)  # um
+    branch.set("radius", 1.0)  # um
     branch.set("axial_resistivity", 100.0)  # Ohm*cm
     branch.set("capacitance", 1.0)  # uF/cm^2
     branch.to_jax()
@@ -113,7 +112,7 @@ def test_cable_G_tridiagonal():
         for j in range(n):
             if abs(i - j) > 1:
                 assert G[i, j] == pytest.approx(0.0, abs=1e-12), (
-                    f"Expected G[{i},{j}]=0, got {G[i,j]}"
+                    f"Expected G[{i},{j}]=0, got {G[i, j]}"
                 )
 
 
@@ -347,9 +346,7 @@ def _make_uniform_cable(ncomp, total_length_um=4000.0):
     branch.set("radius", 1.0)
     branch.set("axial_resistivity", 100.0)
     branch.set("capacitance", 1.0)
-    branch.xyzr[0] = np.array(
-        [[0, 0, 0, 1.0], [total_length_um, 0, 0, 1.0]]
-    )
+    branch.xyzr[0] = np.array([[0, 0, 0, 1.0], [total_length_um, 0, 0, 1.0]])
     branch.compute_compartment_centers()
     branch.to_jax()
     return branch
@@ -393,7 +390,6 @@ def test_analytical_activating_function_interior():
 
     # Compute phi_e in float64 for I = 1 uA
     C = 1e3 / (4 * np.pi * sigma)
-    comp_xyz = np.column_stack([x, np.zeros(ncomp), np.zeros(ncomp)])
     distances = np.sqrt((x - x_e) ** 2 + y_e**2)
     phi_e = C / distances
 
@@ -405,7 +401,9 @@ def test_analytical_activating_function_interior():
     lo = int(ncomp * 0.45)
     hi = int(ncomp * 0.55)
     np.testing.assert_allclose(
-        Gphi[lo:hi], analytical[lo:hi], rtol=0.01,
+        Gphi[lo:hi],
+        analytical[lo:hi],
+        rtol=0.01,
         err_msg="G @ phi_e should match analytical activating function to ~1%",
     )
 
@@ -427,9 +425,7 @@ def test_analytical_activating_function_convergence():
     for ncomp in ncomps:
         branch = _make_uniform_cable(ncomp, total_length)
         params = branch.get_all_parameters(pstate=[])
-        G = np.asarray(
-            build_voltage_operator_G(branch, params), dtype=np.float64
-        )
+        G = np.asarray(build_voltage_operator_G(branch, params), dtype=np.float64)
         x = branch.nodes["x"].values.astype(np.float64)
         dx = float(x[1] - x[0])
         g_ax = G[ncomp // 2, ncomp // 2 - 1]
@@ -446,8 +442,7 @@ def test_analytical_activating_function_convergence():
         lo = int(ncomp * 0.45)
         hi = int(ncomp * 0.55)
         rel_err = np.max(
-            np.abs(Gphi[lo:hi] - analytical[lo:hi])
-            / (np.abs(analytical[lo:hi]) + 1e-30)
+            np.abs(Gphi[lo:hi] - analytical[lo:hi]) / (np.abs(analytical[lo:hi]) + 1e-30)
         )
         errors.append(rel_err)
 
@@ -455,7 +450,7 @@ def test_analytical_activating_function_convergence():
     for i in range(1, len(errors)):
         ratio = errors[i - 1] / errors[i]
         assert 2.5 < ratio < 6.0, (
-            f"Expected ~4x error reduction from ncomp={ncomps[i-1]} to "
-            f"{ncomps[i]}, got {ratio:.2f}x (errors: {errors[i-1]:.6f} -> "
+            f"Expected ~4x error reduction from ncomp={ncomps[i - 1]} to "
+            f"{ncomps[i]}, got {ratio:.2f}x (errors: {errors[i - 1]:.6f} -> "
             f"{errors[i]:.6f})"
         )

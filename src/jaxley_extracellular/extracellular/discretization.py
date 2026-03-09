@@ -28,22 +28,21 @@ directly; instead we replicate the same indexer logic from `_comp_edges`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, cast
 
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
+from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    import pandas as pd
-
+from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def build_voltage_operator_G(module: Any, params: dict[str, Any]) -> Array:
+def build_voltage_operator_G(module: Any, params: ECSParameters) -> Array:
     """Return the dense voltage diffusion operator G [1/ms], shape (Ncomp, Ncomp).
 
     Args:
@@ -60,7 +59,7 @@ def build_voltage_operator_G(module: Any, params: dict[str, Any]) -> Array:
     """
     axial_conds_v: Array = params["axial_conductances"]["v"]  # (C,)
     base = module.base
-    comp_edges: pd.DataFrame = base._comp_edges
+    comp_edges = base._comp_edges
     n_nodes: int = int(base._n_nodes)
     idx: np.ndarray = np.asarray(base._internal_node_inds)  # (Ncomp,)
 
@@ -77,9 +76,7 @@ def build_voltage_operator_G(module: Any, params: dict[str, Any]) -> Array:
 
 
 def _build_G_coo(
-    axial_conductances_v: Array,
-    comp_edges: "pd.DataFrame",
-    n_nodes: int,
+    axial_conductances_v: Array, comp_edges: object, n_nodes: int
 ) -> tuple[Array, Array, Array]:
     """COO representation of G, mirroring Jaxley's _compute_transition_matrix.
 
@@ -91,36 +88,39 @@ def _build_G_coo(
         2. Off-diagonal    -- comp-to-comp axial coupling (type 0)
         3. Branchpoint     -- through-branchpoint coupling (types 1-4 combined)
     """
+    IntArray = NDArray[np.int_]
+
+    # Jaxley exposes comp_edges as an untyped pandas DataFrame; keep one explicit dynamic boundary.
+    comp_edges_df = cast(Any, comp_edges)
+
     # --- 1. Off-diagonals: comp-to-comp (type 0) ----------------------------
-    df_offdiag = comp_edges.loc[comp_edges["type"] == 0]
-    offdiag_inds = df_offdiag.index.to_numpy()
-    sink_offdiags = df_offdiag["sink"].to_numpy().astype(int)
-    source_offdiags = df_offdiag["source"].to_numpy().astype(int)
+    df_offdiag = comp_edges_df.loc[comp_edges_df["type"] == 0]
+    offdiag_inds: IntArray = cast(IntArray, df_offdiag.index.to_numpy(dtype=int))
+    sink_offdiags: IntArray = cast(IntArray, df_offdiag["sink"].to_numpy(dtype=int))
+    source_offdiags: IntArray = cast(IntArray, df_offdiag["source"].to_numpy(dtype=int))
     g_offdiags: Array = axial_conductances_v[offdiag_inds]
 
     # --- 2. Diagonal: negative sum of draining conductances (types 0,1,2) ---
-    df_diag = comp_edges.loc[comp_edges["type"].isin([0, 1, 2])]
-    diag_inds = df_diag.index.to_numpy()
-    diag_sinks = df_diag["sink"].to_numpy().astype(int)
-    g_diags: Array = (
-        jnp.zeros(n_nodes).at[diag_sinks].add(-axial_conductances_v[diag_inds])
-    )
+    df_diag = comp_edges_df.loc[comp_edges_df["type"].isin([0, 1, 2])]
+    diag_inds: IntArray = cast(IntArray, df_diag.index.to_numpy(dtype=int))
+    diag_sinks: IntArray = cast(IntArray, df_diag["sink"].to_numpy(dtype=int))
+    g_diags: Array = jnp.zeros(n_nodes).at[diag_sinks].add(-axial_conductances_v[diag_inds])
 
     # --- 3. Branchpoint cross-terms -----------------------------------------
-    df_to_bp = comp_edges.loc[comp_edges["type"].isin([3, 4])].copy()
-    df_bp_to_comp = comp_edges.loc[comp_edges["type"].isin([1, 2])].copy()
+    df_to_bp = comp_edges_df.loc[comp_edges_df["type"].isin([3, 4])].copy()
+    df_bp_to_comp = comp_edges_df.loc[comp_edges_df["type"].isin([1, 2])].copy()
 
-    sink_bp: np.ndarray
-    source_bp: np.ndarray
+    sink_bp: IntArray
+    source_bp: IntArray
     g_branchpoint: Array
 
     if len(df_to_bp) > 0:
         # Group comp->bp edges by destination branchpoint so we can normalise.
         df_to_bp["_group"] = df_to_bp.groupby("sink").ngroup()
-        comp_to_bp_inds = df_to_bp.index.to_numpy()
-        comp_to_bp_group_sinks = df_to_bp["_group"].to_numpy()
+        comp_to_bp_inds: IntArray = cast(IntArray, df_to_bp.index.to_numpy(dtype=int))
+        comp_to_bp_group_sinks: IntArray = cast(IntArray, df_to_bp["_group"].to_numpy(dtype=int))
 
-        bp_to_comp_inds = df_bp_to_comp.index.to_numpy()
+        bp_to_comp_inds: IntArray = cast(IntArray, df_bp_to_comp.index.to_numpy(dtype=int))
 
         # Outer join to enumerate all (bp->comp, comp->bp) pairs sharing a BP.
         # Index both DataFrames by the branchpoint node index so the join
@@ -130,23 +130,19 @@ def _build_G_coo(
         df_c2b = df_to_bp.set_index("sink", drop=False).copy()
         df_c2b["_pos"] = np.arange(len(df_to_bp))
 
-        bp_conns = df_b2c.join(
-            df_c2b, how="outer", lsuffix="_b2c", rsuffix="_c2b"
-        )[["sink_b2c", "source_c2b", "_pos_b2c", "_pos_c2b"]].rename(
-            columns={"sink_b2c": "sink_comp", "source_c2b": "source_comp"}
-        )
+        bp_conns = df_b2c.join(df_c2b, how="outer", lsuffix="_b2c", rsuffix="_c2b")[
+            ["sink_b2c", "source_c2b", "_pos_b2c", "_pos_c2b"]
+        ]
 
-        b2c_expanded = bp_conns["_pos_b2c"].to_numpy().astype(int)
-        c2b_expanded = bp_conns["_pos_c2b"].to_numpy().astype(int)
-        sink_bp = bp_conns["sink_comp"].to_numpy().astype(int)
-        source_bp = bp_conns["source_comp"].to_numpy().astype(int)
+        b2c_expanded: IntArray = cast(IntArray, bp_conns["_pos_b2c"].to_numpy(dtype=int))
+        c2b_expanded: IntArray = cast(IntArray, bp_conns["_pos_c2b"].to_numpy(dtype=int))
+        sink_bp = cast(IntArray, bp_conns["sink_b2c"].to_numpy(dtype=int))
+        source_bp = cast(IntArray, bp_conns["source_c2b"].to_numpy(dtype=int))
 
         # Normaliser: sum of comp->bp conductances per branchpoint group.
         g_comp_to_bp: Array = axial_conductances_v[comp_to_bp_inds]
         n_groups = int(comp_to_bp_group_sinks.max()) + 1
-        normalizers: Array = (
-            jnp.zeros(n_groups).at[comp_to_bp_group_sinks].add(g_comp_to_bp)
-        )
+        normalizers: Array = jnp.zeros(n_groups).at[comp_to_bp_group_sinks].add(g_comp_to_bp)
         g_norm: Array = g_comp_to_bp / normalizers[comp_to_bp_group_sinks]
 
         g_bp_to_comp: Array = axial_conductances_v[bp_to_comp_inds]

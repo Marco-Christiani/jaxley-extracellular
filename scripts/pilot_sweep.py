@@ -24,7 +24,6 @@ import numpy as np
 
 from jaxley_extracellular.extracellular.experiment import make_hh_cable_experiment
 
-
 # -----------------------------------------------------------------------
 # Sweep parameters
 # -----------------------------------------------------------------------
@@ -35,8 +34,8 @@ WAVEFORM_TYPES = ["monophasic_cathodic", "monophasic_anodic", "biphasic_cathodic
 
 # Binary search
 AMP_LO = 0.0
-AMP_HI = 5000.0   # uA -- wide bracket to cover all conditions
-N_ITER = 14        # precision: 5000/2^14 ~= 0.3 uA
+AMP_HI = 5000.0  # uA -- wide bracket to cover all conditions
+N_ITER = 14  # precision: 5000/2^14 ~= 0.3 uA
 
 # Model
 NCOMP = 50
@@ -52,11 +51,14 @@ RECORD_COMP = 0
 # Waveform factories (vmap-compatible, using masks for traced pw_steps)
 # -----------------------------------------------------------------------
 
+
 def _make_mono_cathodic(amplitude, pw_steps, t_idx):
     return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
 
+
 def _make_mono_anodic(amplitude, pw_steps, t_idx):
     return jnp.where(t_idx < pw_steps, amplitude, 0.0)
+
 
 def _make_biphasic_cathodic_first(amplitude, pw_steps, t_idx):
     cathodic = jnp.where(t_idx < pw_steps, -amplitude, 0.0)
@@ -74,6 +76,7 @@ WAVEFORM_FACTORIES = {
 # -----------------------------------------------------------------------
 # Batched binary search over pulse widths
 # -----------------------------------------------------------------------
+
 
 def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
     """Binary search over amplitude, vmapped across pulse widths.
@@ -118,12 +121,11 @@ def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
 # Main sweep
 # -----------------------------------------------------------------------
 
+
 def run_sweep(outdir: Path):
     outdir.mkdir(parents=True, exist_ok=True)
 
-    total_configs = (
-        len(PULSE_WIDTHS_MS) * len(WAVEFORM_TYPES) * len(ELECTRODE_DISTANCES_UM)
-    )
+    total_configs = len(PULSE_WIDTHS_MS) * len(WAVEFORM_TYPES) * len(ELECTRODE_DISTANCES_UM)
     print(f"Pilot sweep: {total_configs} configs")
     print(f"  pulse widths: {PULSE_WIDTHS_MS} ms")
     print(f"  waveform types: {WAVEFORM_TYPES}")
@@ -151,7 +153,11 @@ def run_sweep(outdir: Path):
 
             t0 = time.time()
             thresholds = _find_thresholds_batched(
-                exp, factory, pw_steps_arr, T, N_ITER,
+                exp,
+                factory,
+                pw_steps_arr,
+                T,
+                N_ITER,
             )
             elapsed = time.time() - t0
             thresholds_np = np.asarray(thresholds)
@@ -169,8 +175,7 @@ def run_sweep(outdir: Path):
                 }
                 results.append(row)
                 print(
-                    f"  {wtype:30s}  pw={pw_ms:.2f}ms  "
-                    f"thr={thr_val:8.1f}uA  Q={charge_nC:8.1f}nC"
+                    f"  {wtype:30s}  pw={pw_ms:.2f}ms  thr={thr_val:8.1f}uA  Q={charge_nC:8.1f}nC"
                 )
             print(f"  [{wtype}] batch: {elapsed:.1f}s for {len(PULSE_WIDTHS_MS)} configs")
             print()
@@ -180,7 +185,15 @@ def run_sweep(outdir: Path):
     # String arrays need object dtype
     out["waveform_type"] = np.array([r["waveform_type"] for r in results])
     outpath = outdir / "pilot_sweep.npz"
-    np.savez(outpath, **out)
+    np.savez(
+        outpath,
+        waveform_type=out["waveform_type"],
+        pulse_width_ms=out["pulse_width_ms"],
+        electrode_distance_um=out["electrode_distance_um"],
+        threshold_uA=out["threshold_uA"],
+        charge_nC=out["charge_nC"],
+        time_s=out["time_s"],
+    )
     print(f"\nSaved {len(results)} results to {outpath}")
 
     # Print summary table
@@ -197,8 +210,8 @@ def run_sweep(outdir: Path):
         )
 
     total_time = sum(r["time_s"] for r in results)
-    print(f"\nTotal wall time: {total_time:.0f}s ({total_time/60:.1f}min)")
-    print(f"Throughput: {len(results)/total_time:.1f} configs/s")
+    print(f"\nTotal wall time: {total_time:.0f}s ({total_time / 60:.1f}min)")
+    print(f"Throughput: {len(results) / total_time:.1f} configs/s")
 
 
 if __name__ == "__main__":

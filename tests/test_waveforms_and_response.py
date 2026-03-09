@@ -1,26 +1,28 @@
 """Tests for waveform generation and response feature extraction."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import pytest
 
-from jaxley_extracellular.extracellular.waveforms import (
-    make_monophasic_pulse,
-    make_biphasic_pulse,
-    make_biphasic_grid,
-)
 from jaxley_extracellular.extracellular.response import (
     detect_spike,
-    spike_latency_steps,
-    spike_latency_ms,
     extract_response_features,
     extract_response_features_batch,
+    spike_latency_ms,
+    spike_latency_steps,
 )
-
+from jaxley_extracellular.extracellular.waveforms import (
+    make_biphasic_grid,
+    make_biphasic_pulse,
+    make_monophasic_pulse,
+)
 
 # ===================================================================
 # Waveform tests
 # ===================================================================
+
 
 class TestMonophasicPulse:
     def test_shape(self):
@@ -90,7 +92,10 @@ class TestBiphasicGrid:
         amps = jnp.array([50.0, 100.0, 200.0])
         pws = jnp.array([0.25, 0.5, 1.0])
         waveforms, grid_amps, grid_pws = make_biphasic_grid(
-            amps, pws, 0.025, 5.0,
+            amps,
+            pws,
+            0.025,
+            5.0,
         )
         assert waveforms.shape == (9, 200)  # 3 x 3 grid
         assert grid_amps.shape == (9,)
@@ -107,6 +112,7 @@ class TestBiphasicGrid:
 # ===================================================================
 # Response feature tests
 # ===================================================================
+
 
 class TestDetectSpike:
     def test_spike_detected(self):
@@ -140,13 +146,14 @@ class TestSpikeLatency:
 
     def test_vmap_compatible(self):
         """Latency can be vmapped over a batch of traces."""
-        v_batch = jnp.array([
-            [-65.0, -60.0, 10.0, -30.0],   # spikes at idx 2
-            [-65.0, -60.0, -55.0, -60.0],  # no spike
-        ])
-        latencies = jax.vmap(
-            lambda v: spike_latency_steps(v, threshold_mV=0.0)
-        )(v_batch)
+        v_batch = jnp.array(
+            [
+                [-65.0, -60.0, 10.0, -30.0],  # spikes at idx 2
+                [-65.0, -60.0, -55.0, -60.0],  # no spike
+            ]
+        )
+        latency_fn = partial(spike_latency_steps, threshold_mV=0.0)
+        latencies = jax.vmap(latency_fn)(v_batch)
         assert int(latencies[0]) == 2
         assert int(latencies[1]) == 4  # sentinel = T
 
@@ -169,21 +176,25 @@ class TestExtractResponseFeatures:
 
 class TestBatchFeatures:
     def test_batch_shape(self):
-        v_batch = jnp.array([
-            [-65.0, -60.0, 10.0, -30.0],
-            [-65.0, -60.0, -55.0, -60.0],
-            [-65.0, -50.0, 30.0, 5.0],
-        ])
+        v_batch = jnp.array(
+            [
+                [-65.0, -60.0, 10.0, -30.0],
+                [-65.0, -60.0, -55.0, -60.0],
+                [-65.0, -50.0, 30.0, 5.0],
+            ]
+        )
         feats = extract_response_features_batch(v_batch, dt_ms=0.025)
         assert feats["spiked"].shape == (3,)
         assert feats["latency_ms"].shape == (3,)
         assert feats["vmax"].shape == (3,)
 
     def test_batch_values(self):
-        v_batch = jnp.array([
-            [-65.0, -60.0, 10.0, -30.0],
-            [-65.0, -60.0, -55.0, -60.0],
-        ])
+        v_batch = jnp.array(
+            [
+                [-65.0, -60.0, 10.0, -30.0],
+                [-65.0, -60.0, -55.0, -60.0],
+            ]
+        )
         feats = extract_response_features_batch(v_batch, dt_ms=0.025)
         assert bool(feats["spiked"][0])
         assert not bool(feats["spiked"][1])

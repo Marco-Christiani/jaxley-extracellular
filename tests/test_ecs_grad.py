@@ -10,10 +10,10 @@ Confirms that jax.grad flows through every differentiable parameter:
 
 from __future__ import annotations
 
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jaxley as jx
+import numpy as np
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
 from jaxley_extracellular.extracellular.equivalent_current import phi_e_to_ecs_nA
@@ -23,12 +23,11 @@ from jaxley_extracellular.extracellular.jaxley_adapter import (
     get_compartment_xyz,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared setup
 # ---------------------------------------------------------------------------
 
-DT = 0.025   # ms
+DT = 0.025  # ms
 T_MAX = 1.0  # ms -- intentionally short; we only need non-zero gradients
 N_STEPS = int(T_MAX / DT)
 
@@ -52,10 +51,10 @@ def _static_ecs_parts(branch: jx.Branch) -> tuple:
 
     branch.to_jax()
     params = branch.get_all_parameters(pstate=[])
-    G = build_voltage_operator_G(branch, params)          # static (Ncomp, Ncomp)
+    G = build_voltage_operator_G(branch, params)  # static (Ncomp, Ncomp)
     idx = np.asarray(branch.base._internal_node_inds)
-    cm = params["capacitance"][idx]                        # static (Ncomp,)
-    area = params["area"][idx]                             # static (Ncomp,)
+    cm = params["capacitance"][idx]  # static (Ncomp,)
+    area = params["area"][idx]  # static (Ncomp,)
     return comp_xyz, G, cm, area
 
 
@@ -97,7 +96,7 @@ def test_grad_wrt_current_waveform():
 def test_grad_wrt_electrode_pos():
     """jax.grad flows through point_source_potential w.r.t. electrode_pos."""
     branch = _make_branch(ncomp=4)
-    comp_xyz, G, cm, area = _static_ecs_parts(branch)
+    comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
     electrode_current = jnp.ones((5,))
     sigma = 0.3
@@ -117,7 +116,7 @@ def test_grad_wrt_electrode_pos():
 def test_grad_electrode_pos_points_away_from_cell():
     """Moving the electrode away should reduce phi_e -- check sign via grad."""
     branch = _make_branch(ncomp=4)
-    comp_xyz, G, cm, area = _static_ecs_parts(branch)
+    comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
     electrode_current = jnp.ones((1,))
     sigma = 0.3
@@ -143,7 +142,7 @@ def test_grad_electrode_pos_points_away_from_cell():
 def test_grad_wrt_sigma():
     """jax.grad flows through point_source_potential w.r.t. sigma."""
     branch = _make_branch(ncomp=4)
-    comp_xyz, G, cm, area = _static_ecs_parts(branch)
+    comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
     electrode_pos = jnp.array([50.0, 50.0, 0.0])
     electrode_current = jnp.ones((5,))

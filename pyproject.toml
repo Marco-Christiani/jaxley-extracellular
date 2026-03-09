@@ -96,9 +96,9 @@ warn_redundant_casts = true
 warn_unreachable = true
 strict = true
 
-# Many 3rd party deps lack complete stubs
-# ignore_missing_imports = true
-# implicit_reexport = false
+[[tool.mypy.overrides]]
+module = ["jaxley", "jaxley.*"]
+ignore_missing_imports = true
 
 [tool.pyright]
 include = ["src"]

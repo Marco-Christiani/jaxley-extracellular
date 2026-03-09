@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol, cast
 
 import jax
 import jax.numpy as jnp
 import jaxley as jx
+
+
+class _DeviceLike(Protocol):
+    platform: str
 
 
 def smoke_devices() -> None:
@@ -44,7 +48,8 @@ def smoke_integrate() -> None:
 
 
 def smoke_tpu() -> None:
-    devices: list[Any] = jax.devices()  # pyright: ignore[reportUnknownVariableType]
+    # jax.devices() is untyped in stubs; cast to a minimal protocol we actually use.
+    devices = cast(list[_DeviceLike], list(jax.devices()))
     print("jax", jax.__version__)
     print("default_backend", jax.default_backend())
     print("devices", devices)

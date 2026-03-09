@@ -30,22 +30,21 @@ Public function
 
 from __future__ import annotations
 
-from typing import Union
-
+import jax.numpy as jnp
 import numpy as np
 from jax import Array
-import jax.numpy as jnp
 
 # electrode_pos may be a plain numpy array (static) or a JAX array (traced,
 # e.g. when differentiating w.r.t. electrode placement).
-_ArrayLike = Union[np.ndarray, Array]
+_ArrayLike = np.ndarray | Array
+_ScalarLike = float | Array
 
 
 def point_source_potential(
     comp_xyz: _ArrayLike,
     electrode_pos: _ArrayLike,
     electrode_current: Array,
-    sigma: float,
+    sigma: _ScalarLike,
     min_distance_um: float = 1.0,
 ) -> Array:
     """Compute phi_e at compartment centres from a single point-source electrode.
@@ -71,7 +70,7 @@ def point_source_potential(
         phi_e: jax.Array of shape (Ncomp, T) in mV.
     """
     # Promote both spatial arrays to JAX so the whole computation is traceable.
-    comp_xyz_j: Array = jnp.asarray(comp_xyz)       # (Ncomp, 3) -- static constant
+    comp_xyz_j: Array = jnp.asarray(comp_xyz)  # (Ncomp, 3) -- static constant
     electrode_pos_j: Array = jnp.asarray(electrode_pos)  # (3,) -- may be traced
 
     if comp_xyz_j.ndim != 2 or comp_xyz_j.shape[1] != 3:
@@ -81,7 +80,7 @@ def point_source_potential(
 
     # Euclidean distance from each compartment centre to the electrode [um]
     diff: Array = comp_xyz_j - electrode_pos_j[jnp.newaxis, :]  # (Ncomp, 3)
-    distances: Array = jnp.sqrt((diff**2).sum(axis=-1))          # (Ncomp,)
+    distances: Array = jnp.sqrt((diff**2).sum(axis=-1))  # (Ncomp,)
     distances = jnp.maximum(distances, min_distance_um)
 
     # Spatial transfer factor [mV/uA]: phi_e [mV] = prefactor * I [uA]

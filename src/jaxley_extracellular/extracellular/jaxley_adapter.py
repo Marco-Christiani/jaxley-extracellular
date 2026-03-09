@@ -24,14 +24,17 @@ Design constraints (Phase 1)
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from jax import Array
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
 from jaxley_extracellular.extracellular.equivalent_current import phi_e_to_ecs_nA
-
+from jaxley_extracellular.extracellular.typing_helpers import (
+    DataStimuli,
+    ECSParameters,
+)
 
 # ---------------------------------------------------------------------------
 # Coordinate preparation
@@ -80,7 +83,8 @@ def get_compartment_xyz(module: Any) -> np.ndarray:
             "Compartment coordinates are not populated.  "
             "Call ensure_compartment_centers(module) first."
         )
-    return nodes.loc[idx, ["x", "y", "z"]].to_numpy(dtype=float)
+    # pandas-stubs cannot infer DataFrame->ndarray shape here, but runtime is a float array.
+    return cast(np.ndarray, nodes.loc[idx, ["x", "y", "z"]].to_numpy(dtype=float))
 
 
 # ---------------------------------------------------------------------------
@@ -107,13 +111,13 @@ def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
         i_ecs_nA: (Ncomp, T) equivalent stimulus current in nA.
     """
     module.to_jax()
-    params: dict[str, Any] = module.get_all_parameters(pstate=[])
+    params: ECSParameters = module.get_all_parameters(pstate=[])
 
     G: Array = build_voltage_operator_G(module, params)  # (Ncomp, Ncomp)
 
     idx = np.asarray(module.base._internal_node_inds)
-    cm: Array = params["capacitance"][idx]    # (Ncomp,) uF/cm^2
-    area: Array = params["area"][idx]         # (Ncomp,) um^2
+    cm: Array = params["capacitance"][idx]  # (Ncomp,) uF/cm^2
+    area: Array = params["area"][idx]  # (Ncomp,) um^2
 
     return phi_e_to_ecs_nA(phi_e_mV, G, cm, area)  # (Ncomp, T) nA
 
@@ -123,7 +127,7 @@ def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
 # ---------------------------------------------------------------------------
 
 
-def package_data_stimuli(module: Any, i_nA: Array) -> tuple[Any, ...]:
+def package_data_stimuli(module: Any, i_nA: Array) -> DataStimuli:
     """Wrap ``i_nA`` into the ``data_stimuli`` tuple expected by ``jx.integrate``.
 
     Equivalent to calling ``module.data_stimulate(i_nA, data_stimuli=None)``.
@@ -135,4 +139,5 @@ def package_data_stimuli(module: Any, i_nA: Array) -> tuple[Any, ...]:
     Returns:
         data_stimuli tuple for passing into ``jx.integrate``.
     """
-    return module.data_stimulate(i_nA, data_stimuli=None)  # type: ignore[no-any-return]
+    # Jaxley returns a heterogeneous tuple consumed by jx.integrate as-is.
+    return cast(DataStimuli, module.data_stimulate(i_nA, data_stimuli=None))
