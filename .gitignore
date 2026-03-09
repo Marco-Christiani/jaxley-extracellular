@@ -221,3 +221,6 @@ infra/tofu/*.tfstate
 infra/tofu/*.tfstate.*
 infra/tofu/terraform.tfvars
 reference
+
+# outputs
+/results
