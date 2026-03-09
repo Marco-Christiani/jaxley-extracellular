@@ -8,6 +8,9 @@ Tests
 4. Branched cell (jx.Cell, two branches): row-sums ~= 0, correct through-
    branchpoint cross-terms appear in G.
 5. Single compartment (jx.Compartment): G is [[0]].
+6. Operator equivalence: G @ v == Jaxley's _voltage_vectorfield (axial only).
+7. Symmetry audit: symmetric for uniform params, asymmetric for non-uniform.
+8. Analytical activating function: G @ phi_e matches d^2phi_e/dx^2.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import numpy as np
 import jax.numpy as jnp
 import jaxley as jx
 import pytest
+from jaxley.solver_voltage import _voltage_vectorfield
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
 
@@ -194,3 +198,264 @@ def test_single_compartment_G():
     G = _build_G(comp)
     assert G.shape == (1, 1)
     assert G[0, 0] == pytest.approx(0.0, abs=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# 5. Operator equivalence: G @ v vs Jaxley _voltage_vectorfield
+# ---------------------------------------------------------------------------
+
+
+def _get_solver_kwargs(module):
+    """Extract solver_kwargs needed for _voltage_vectorfield."""
+    base = module.base
+    edges = base._comp_edges
+    return dict(
+        sinks=np.asarray(edges["sink"].to_list()),
+        sources=np.asarray(edges["source"].to_list()),
+        types=np.asarray(edges["type"].to_list()),
+        n_nodes=int(base._n_nodes),
+    )
+
+
+def _compare_G_vs_vectorfield(module, v_comps, rtol=1e-10, atol=1e-10):
+    """Assert G @ v_comps == axial part of _voltage_vectorfield at compartments.
+
+    Sets voltage_terms=0 and constant_terms=0 so _voltage_vectorfield returns
+    only the axial contribution to dv/dt.  With JAX_ENABLE_X64=1 (set in
+    conftest.py), both paths use float64, giving agreement to ~1e-13.
+    """
+    module.to_jax()
+    params = module.get_all_parameters(pstate=[])
+    G = build_voltage_operator_G(module, params)
+    kw = _get_solver_kwargs(module)
+    idx = np.asarray(module.base._internal_node_inds)
+
+    Gv = np.asarray(G @ v_comps)
+
+    v_full = jnp.zeros(kw["n_nodes"])
+    v_full = v_full.at[idx].set(v_comps)
+
+    vf = _voltage_vectorfield(
+        v_full,
+        jnp.zeros(kw["n_nodes"]),
+        jnp.zeros(kw["n_nodes"]),
+        params["axial_conductances"]["v"],
+        kw["sinks"],
+        kw["sources"],
+        kw["types"],
+        kw["n_nodes"],
+    )
+    vf_comps = np.asarray(vf[idx])
+
+    np.testing.assert_allclose(Gv, vf_comps, rtol=rtol, atol=atol)
+
+
+def test_operator_equivalence_cable_random_v():
+    """G @ v matches Jaxley's axial vectorfield for random voltages on a cable."""
+    branch = _make_branch(ncomp=8)
+    rng = np.random.default_rng(42)
+    for _ in range(3):
+        v = jnp.array(rng.standard_normal(8) * 20 - 65)
+        _compare_G_vs_vectorfield(branch, v)
+
+
+def test_operator_equivalence_cable_nonuniform_v():
+    """G @ v matches Jaxley's axial vectorfield for structured voltage patterns."""
+    branch = _make_branch(ncomp=8)
+    n = 8
+    # Sinusoidal
+    v_sin = jnp.array(np.sin(np.linspace(0, 2 * np.pi, n)) * 30 - 65)
+    _compare_G_vs_vectorfield(branch, v_sin)
+    # Ramp
+    v_ramp = jnp.linspace(-80.0, -40.0, n)
+    _compare_G_vs_vectorfield(branch, v_ramp)
+    # Spike-like: one compartment depolarised
+    v_spike = jnp.full(n, -65.0).at[n // 2].set(30.0)
+    _compare_G_vs_vectorfield(branch, v_spike)
+
+
+def test_operator_equivalence_branched_random_v():
+    """G @ v matches Jaxley's axial vectorfield for random v on a Y-cell."""
+    cell = _make_cell_two_branches()
+    ncomp = 7  # 4 + 3
+    rng = np.random.default_rng(99)
+    for _ in range(3):
+        v = jnp.array(rng.standard_normal(ncomp) * 20 - 65)
+        _compare_G_vs_vectorfield(cell, v)
+
+
+def test_operator_equivalence_branched_nonuniform_v():
+    """G @ v matches Jaxley's axial vectorfield for structured v on a Y-cell."""
+    cell = _make_cell_two_branches()
+    ncomp = 7
+    v_sin = jnp.array(np.sin(np.linspace(0, 2 * np.pi, ncomp)) * 30 - 65)
+    _compare_G_vs_vectorfield(cell, v_sin)
+    v_ramp = jnp.linspace(-80.0, -40.0, ncomp)
+    _compare_G_vs_vectorfield(cell, v_ramp)
+    v_spike = jnp.full(ncomp, -65.0).at[ncomp // 2].set(30.0)
+    _compare_G_vs_vectorfield(cell, v_spike)
+
+
+# ---------------------------------------------------------------------------
+# 6. Symmetry audit
+# ---------------------------------------------------------------------------
+
+
+def test_branched_cell_G_symmetric_for_uniform_params():
+    """For a Y-cell with uniform params, G should be symmetric."""
+    cell = _make_cell_two_branches()
+    G = _build_G(cell)
+    np.testing.assert_allclose(G, G.T, atol=1e-10)
+
+
+def test_cable_G_asymmetric_for_nonuniform_radius():
+    """With varying radius per compartment, G is NOT symmetric.
+
+    This proves the symmetry claim is correctly limited to uniform params.
+    """
+    comp = jx.Compartment()
+    branch = jx.Branch(comp, ncomp=5)
+    branch.set("length", 100.0)
+    branch.set("axial_resistivity", 100.0)
+    branch.set("capacitance", 1.0)
+    for i in range(5):
+        branch.comp(i).set("radius", float(1.0 + i * 0.5))
+    branch.to_jax()
+    G = _build_G(branch)
+    # G should NOT be symmetric
+    max_asymmetry = np.max(np.abs(G - G.T))
+    assert max_asymmetry > 0.1, (
+        f"Expected asymmetric G for non-uniform radius, got max |G-G^T|={max_asymmetry}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7. Analytical activating function
+# ---------------------------------------------------------------------------
+
+
+def _make_uniform_cable(ncomp, total_length_um=4000.0):
+    """Build a cable with coordinates consistent with compartment length.
+
+    Sets xyzr so that coordinate spacing equals the per-compartment length,
+    which is needed for the analytical activating function comparison.
+    """
+    comp_len = total_length_um / ncomp
+    comp = jx.Compartment()
+    branch = jx.Branch(comp, ncomp=ncomp)
+    branch.set("length", comp_len)
+    branch.set("radius", 1.0)
+    branch.set("axial_resistivity", 100.0)
+    branch.set("capacitance", 1.0)
+    branch.xyzr[0] = np.array(
+        [[0, 0, 0, 1.0], [total_length_um, 0, 0, 1.0]]
+    )
+    branch.compute_compartment_centers()
+    branch.to_jax()
+    return branch
+
+
+def _analytical_d2phi_dx2(x, x_e, y_e, sigma):
+    """Closed-form second spatial derivative of point-source phi_e [mV/um^2].
+
+    phi_e [mV] = 1e3 / (4*pi*sigma * r)  for I = 1 uA
+    d^2phi_e/dx^2 = C * (2*(x-x_e)^2 - y_e^2) / ((x-x_e)^2 + y_e^2)^(5/2)
+    """
+    C = 1e3 / (4 * np.pi * sigma)
+    dx = x - x_e
+    r2 = dx**2 + y_e**2
+    return C * (2 * dx**2 - y_e**2) / r2**2.5
+
+
+def test_analytical_activating_function_interior():
+    """G @ phi_e matches analytical d^2phi_e/dx^2 for interior compartments.
+
+    For a uniform cable with axial conductance g and spacing dx:
+        (G @ phi_e)[i] = g * (phi_e[i-1] - 2*phi_e[i] + phi_e[i+1])
+                       ~= g * dx^2 * d^2phi_e/dx^2
+    This should match to within O(dx^2) truncation error.
+    """
+    ncomp = 200
+    total_length = 4000.0
+    sigma = 0.3
+    y_e = 1000.0
+
+    branch = _make_uniform_cable(ncomp, total_length)
+    params = branch.get_all_parameters(pstate=[])
+    G = np.asarray(build_voltage_operator_G(branch, params), dtype=np.float64)
+
+    x = branch.nodes["x"].values.astype(np.float64)
+    dx = float(x[1] - x[0])
+    x_e = total_length / 2.0
+
+    # g_axial: off-diagonal entry for interior compartment
+    g_ax = G[ncomp // 2, ncomp // 2 - 1]
+
+    # Compute phi_e in float64 for I = 1 uA
+    C = 1e3 / (4 * np.pi * sigma)
+    comp_xyz = np.column_stack([x, np.zeros(ncomp), np.zeros(ncomp)])
+    distances = np.sqrt((x - x_e) ** 2 + y_e**2)
+    phi_e = C / distances
+
+    Gphi = G @ phi_e
+    d2phi = _analytical_d2phi_dx2(x, x_e, y_e, sigma)
+    analytical = g_ax * dx**2 * d2phi
+
+    # Compare central 10% where truncation error is smallest
+    lo = int(ncomp * 0.45)
+    hi = int(ncomp * 0.55)
+    np.testing.assert_allclose(
+        Gphi[lo:hi], analytical[lo:hi], rtol=0.01,
+        err_msg="G @ phi_e should match analytical activating function to ~1%",
+    )
+
+
+def test_analytical_activating_function_convergence():
+    """Truncation error between G @ phi_e and analytical decreases as O(dx^2).
+
+    Halving dx (doubling ncomp) should reduce the relative error by ~4x,
+    confirming second-order finite-difference convergence.
+    """
+    total_length = 4000.0
+    sigma = 0.3
+    y_e = 1000.0
+    x_e = total_length / 2.0
+
+    ncomps = [50, 100, 200, 400]
+    errors = []
+
+    for ncomp in ncomps:
+        branch = _make_uniform_cable(ncomp, total_length)
+        params = branch.get_all_parameters(pstate=[])
+        G = np.asarray(
+            build_voltage_operator_G(branch, params), dtype=np.float64
+        )
+        x = branch.nodes["x"].values.astype(np.float64)
+        dx = float(x[1] - x[0])
+        g_ax = G[ncomp // 2, ncomp // 2 - 1]
+
+        C = 1e3 / (4 * np.pi * sigma)
+        distances = np.sqrt((x - x_e) ** 2 + y_e**2)
+        phi_e = C / distances
+
+        Gphi = G @ phi_e
+        d2phi = _analytical_d2phi_dx2(x, x_e, y_e, sigma)
+        analytical = g_ax * dx**2 * d2phi
+
+        # Central 10% for clean convergence
+        lo = int(ncomp * 0.45)
+        hi = int(ncomp * 0.55)
+        rel_err = np.max(
+            np.abs(Gphi[lo:hi] - analytical[lo:hi])
+            / (np.abs(analytical[lo:hi]) + 1e-30)
+        )
+        errors.append(rel_err)
+
+    # Consecutive doublings should give ~4x error reduction
+    for i in range(1, len(errors)):
+        ratio = errors[i - 1] / errors[i]
+        assert 2.5 < ratio < 6.0, (
+            f"Expected ~4x error reduction from ncomp={ncomps[i-1]} to "
+            f"{ncomps[i]}, got {ratio:.2f}x (errors: {errors[i-1]:.6f} -> "
+            f"{errors[i]:.6f})"
+        )

@@ -5,6 +5,9 @@ Sweeps pulse width x polarity x waveform shape (mono/biphasic), finding
 activation threshold via vectorised binary search at each condition.
 Saves results as .npz for downstream analysis.
 
+All pulse widths for a given waveform type are batched into a single
+find_thresholds call, parallelising the binary search across pulse widths.
+
 Usage:
     python scripts/pilot_sweep.py [--outdir results]
 """
@@ -46,20 +49,19 @@ RECORD_COMP = 0
 
 
 # -----------------------------------------------------------------------
-# Waveform factories (must be vmap-compatible)
+# Waveform factories (vmap-compatible, using masks for traced pw_steps)
 # -----------------------------------------------------------------------
 
-def _make_mono_cathodic(amplitude, pw_steps, T):
-    return jnp.zeros((T,)).at[:pw_steps].set(-amplitude)
+def _make_mono_cathodic(amplitude, pw_steps, t_idx):
+    return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
 
-def _make_mono_anodic(amplitude, pw_steps, T):
-    return jnp.zeros((T,)).at[:pw_steps].set(amplitude)
+def _make_mono_anodic(amplitude, pw_steps, t_idx):
+    return jnp.where(t_idx < pw_steps, amplitude, 0.0)
 
-def _make_biphasic_cathodic_first(amplitude, pw_steps, T):
-    w = jnp.zeros((T,))
-    w = w.at[:pw_steps].set(-amplitude)
-    w = w.at[pw_steps:2 * pw_steps].set(amplitude)
-    return w
+def _make_biphasic_cathodic_first(amplitude, pw_steps, t_idx):
+    cathodic = jnp.where(t_idx < pw_steps, -amplitude, 0.0)
+    anodic = jnp.where((t_idx >= pw_steps) & (t_idx < 2 * pw_steps), amplitude, 0.0)
+    return cathodic + anodic
 
 
 WAVEFORM_FACTORIES = {
@@ -67,6 +69,49 @@ WAVEFORM_FACTORIES = {
     "monophasic_anodic": _make_mono_anodic,
     "biphasic_cathodic_first": _make_biphasic_cathodic_first,
 }
+
+
+# -----------------------------------------------------------------------
+# Batched binary search over pulse widths
+# -----------------------------------------------------------------------
+
+def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
+    """Binary search over amplitude, vmapped across pulse widths.
+
+    Parameters
+    ----------
+    exp : ECSExperiment
+    factory : callable(amplitude, pw_steps, t_idx) -> Array(T,)
+    pw_steps_arr : jnp.Array, shape (N,)
+        Pulse width in timesteps for each config.
+    T : int
+        Total timesteps.
+    n_iter : int
+        Number of bisection iterations.
+
+    Returns
+    -------
+    thresholds : jnp.Array, shape (N,)
+    """
+    N = pw_steps_arr.shape[0]
+    lo = jnp.full(N, AMP_LO, dtype=jnp.float32)
+    hi = jnp.full(N, AMP_HI, dtype=jnp.float32)
+    t_idx = jnp.arange(T)
+
+    @jax.jit
+    @jax.vmap
+    def _test(amp, pw_steps):
+        w = factory(amp, pw_steps, t_idx)
+        feats = exp.simulate_and_extract(w, RECORD_COMP)
+        return feats["spiked"]
+
+    for _ in range(n_iter):
+        mid = (lo + hi) / 2.0
+        spiked = _test(mid, pw_steps_arr)
+        lo = jnp.where(spiked, lo, mid)
+        hi = jnp.where(spiked, mid, hi)
+
+    return (lo + hi) / 2.0
 
 
 # -----------------------------------------------------------------------
@@ -87,6 +132,7 @@ def run_sweep(outdir: Path):
     print()
 
     T = int(T_MS / DT_MS)
+    pw_steps_arr = jnp.array([int(pw / DT_MS) for pw in PULSE_WIDTHS_MS])
     results = []
 
     for dist_um in ELECTRODE_DISTANCES_UM:
@@ -103,39 +149,30 @@ def run_sweep(outdir: Path):
         for wtype in WAVEFORM_TYPES:
             factory = WAVEFORM_FACTORIES[wtype]
 
-            for pw_ms in PULSE_WIDTHS_MS:
-                pw_steps = int(pw_ms / DT_MS)
+            t0 = time.time()
+            thresholds = _find_thresholds_batched(
+                exp, factory, pw_steps_arr, T, N_ITER,
+            )
+            elapsed = time.time() - t0
+            thresholds_np = np.asarray(thresholds)
 
-                def make_wf(amplitude, _pw=pw_steps, _T=T, _fac=factory):
-                    return _fac(amplitude, _pw, _T)
-
-                lo = jnp.array([AMP_LO])
-                hi = jnp.array([AMP_HI])
-
-                t0 = time.time()
-                thr = exp.find_thresholds(
-                    make_wf, lo, hi,
-                    n_iter=N_ITER,
-                    record_comp=RECORD_COMP,
-                )
-                elapsed = time.time() - t0
-                thr_val = float(thr[0])
+            for i, pw_ms in enumerate(PULSE_WIDTHS_MS):
+                thr_val = float(thresholds_np[i])
                 charge_nC = thr_val * pw_ms
-
                 row = {
                     "waveform_type": wtype,
                     "pulse_width_ms": float(pw_ms),
                     "electrode_distance_um": float(dist_um),
                     "threshold_uA": thr_val,
                     "charge_nC": charge_nC,
-                    "time_s": elapsed,
+                    "time_s": elapsed / len(PULSE_WIDTHS_MS),
                 }
                 results.append(row)
                 print(
                     f"  {wtype:30s}  pw={pw_ms:.2f}ms  "
-                    f"thr={thr_val:8.1f}uA  Q={charge_nC:8.1f}nC  "
-                    f"({elapsed:.1f}s)"
+                    f"thr={thr_val:8.1f}uA  Q={charge_nC:8.1f}nC"
                 )
+            print(f"  [{wtype}] batch: {elapsed:.1f}s for {len(PULSE_WIDTHS_MS)} configs")
             print()
 
     # Save results
