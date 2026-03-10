@@ -15,13 +15,26 @@ Tests
 
 from __future__ import annotations
 
+from typing import Any, cast
+
+import jax
 import jax.numpy as jnp
 import jaxley as jx
+import jaxley.solver_voltage as solver_voltage
 import numpy as np
 import pytest
-from jaxley.solver_voltage import _voltage_vectorfield
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
+from jaxley_extracellular.extracellular.jaxley_adapter import (
+    ensure_compartment_centers,
+    get_compartment_xyz,
+)
+from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
+
+VoltageVectorfield = Any
+_voltage_vectorfield: VoltageVectorfield = object.__getattribute__(
+    solver_voltage, "_voltage_vectorfield"
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,7 +69,7 @@ def _make_cell_two_branches() -> jx.Cell:
 def _build_G(module: jx.Module) -> np.ndarray:
     """Return G as a numpy array (already transferred from device)."""
     module.to_jax()
-    params = module.get_all_parameters(pstate=[])
+    params = cast(ECSParameters, module.get_all_parameters(pstate=[]))
     G = build_voltage_operator_G(module, params)
     return np.asarray(G)
 
@@ -66,13 +79,13 @@ def _build_G(module: jx.Module) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def test_cable_G_shape():
+def test_cable_G_shape() -> None:
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
     assert G.shape == (4, 4), f"Expected (4,4), got {G.shape}"
 
 
-def test_cable_G_row_sums_zero():
+def test_cable_G_row_sums_zero() -> None:
     """Row sums of G must be zero (current conservation / sealed ends)."""
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
@@ -80,7 +93,7 @@ def test_cable_G_row_sums_zero():
     np.testing.assert_allclose(row_sums, 0.0, atol=1e-10)
 
 
-def test_cable_G_diagonal_negative():
+def test_cable_G_diagonal_negative() -> None:
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
     assert np.all(np.diag(G) <= 0.0), "Diagonal must be non-positive"
@@ -88,7 +101,7 @@ def test_cable_G_diagonal_negative():
     assert np.all(np.diag(G)[1:-1] < 0.0)
 
 
-def test_cable_G_offdiagonals_nonnegative():
+def test_cable_G_offdiagonals_nonnegative() -> None:
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
     n = G.shape[0]
@@ -96,14 +109,14 @@ def test_cable_G_offdiagonals_nonnegative():
     assert np.all(G[mask] >= 0.0), "Off-diagonal entries must be non-negative"
 
 
-def test_cable_G_symmetric_for_uniform_params():
+def test_cable_G_symmetric_for_uniform_params() -> None:
     """For a cable with identical compartments G should be symmetric."""
     branch = _make_branch(ncomp=5)
     G = _build_G(branch)
     np.testing.assert_allclose(G, G.T, atol=1e-10)
 
 
-def test_cable_G_tridiagonal():
+def test_cable_G_tridiagonal() -> None:
     """For a single branch there should be no entries outside the tridiagonal."""
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
@@ -121,7 +134,7 @@ def test_cable_G_tridiagonal():
 # ---------------------------------------------------------------------------
 
 
-def test_uniform_phi_e_zero_forcing():
+def test_uniform_phi_e_zero_forcing() -> None:
     """A spatially uniform phi_e produces G @ phi_e = 0 (row sums = 0)."""
     branch = _make_branch(ncomp=6)
     G = _build_G(branch)
@@ -132,7 +145,7 @@ def test_uniform_phi_e_zero_forcing():
     np.testing.assert_allclose(f_ecs, 0.0, atol=1e-9)
 
 
-def test_linear_phi_e_forcing_sign():
+def test_linear_phi_e_forcing_sign() -> None:
     """A linear phi_e gradient should produce opposite forcing at the two ends."""
     branch = _make_branch(ncomp=4)
     G = _build_G(branch)
@@ -152,21 +165,21 @@ def test_linear_phi_e_forcing_sign():
 # ---------------------------------------------------------------------------
 
 
-def test_branched_cell_G_shape():
+def test_branched_cell_G_shape() -> None:
     cell = _make_cell_two_branches()
     G = _build_G(cell)
     # 4 comps in branch 0 + 3 comps in branch 1
     assert G.shape == (7, 7), f"Expected (7,7), got {G.shape}"
 
 
-def test_branched_cell_G_row_sums_zero():
+def test_branched_cell_G_row_sums_zero() -> None:
     cell = _make_cell_two_branches()
     G = _build_G(cell)
     row_sums = G.sum(axis=1)
     np.testing.assert_allclose(row_sums, 0.0, atol=1e-9)
 
 
-def test_branched_cell_through_branchpoint_coupling():
+def test_branched_cell_through_branchpoint_coupling() -> None:
     """Compartments that share a branchpoint should have non-zero cross-terms."""
     cell = _make_cell_two_branches()
     G = _build_G(cell)
@@ -177,7 +190,7 @@ def test_branched_cell_through_branchpoint_coupling():
     assert G[4, 3] > 0.0, "Expected cross-branchpoint coupling G[4,3] > 0"
 
 
-def test_branched_cell_uniform_phi_zero_forcing():
+def test_branched_cell_uniform_phi_zero_forcing() -> None:
     cell = _make_cell_two_branches()
     G = _build_G(cell)
     Ncomp = G.shape[0]
@@ -191,7 +204,7 @@ def test_branched_cell_uniform_phi_zero_forcing():
 # ---------------------------------------------------------------------------
 
 
-def test_single_compartment_G():
+def test_single_compartment_G() -> None:
     comp = jx.Compartment()
     comp.to_jax()
     G = _build_G(comp)
@@ -204,19 +217,22 @@ def test_single_compartment_G():
 # ---------------------------------------------------------------------------
 
 
-def _get_solver_kwargs(module):
+def _get_solver_kwargs(module: jx.Module) -> dict[str, np.ndarray | int]:
     """Extract solver_kwargs needed for _voltage_vectorfield."""
     base = module.base
-    edges = base._comp_edges
+    edges = object.__getattribute__(base, "_comp_edges")
+    n_nodes = cast(int, base._n_nodes)
     return dict(
         sinks=np.asarray(edges["sink"].to_list()),
         sources=np.asarray(edges["source"].to_list()),
         types=np.asarray(edges["type"].to_list()),
-        n_nodes=int(base._n_nodes),
+        n_nodes=n_nodes,
     )
 
 
-def _compare_G_vs_vectorfield(module, v_comps, rtol=1e-10, atol=1e-10):
+def _compare_G_vs_vectorfield(
+    module: jx.Module, v_comps: jax.Array, rtol: float = 1e-10, atol: float = 1e-10
+) -> None:
     """Assert G @ v_comps == axial part of _voltage_vectorfield at compartments.
 
     Sets voltage_terms=0 and constant_terms=0 so _voltage_vectorfield returns
@@ -224,7 +240,7 @@ def _compare_G_vs_vectorfield(module, v_comps, rtol=1e-10, atol=1e-10):
     conftest.py), both paths use float64, giving agreement to ~1e-13.
     """
     module.to_jax()
-    params = module.get_all_parameters(pstate=[])
+    params = cast(ECSParameters, module.get_all_parameters(pstate=[]))
     G = build_voltage_operator_G(module, params)
     kw = _get_solver_kwargs(module)
     idx = np.asarray(module.base._internal_node_inds)
@@ -249,7 +265,7 @@ def _compare_G_vs_vectorfield(module, v_comps, rtol=1e-10, atol=1e-10):
     np.testing.assert_allclose(Gv, vf_comps, rtol=rtol, atol=atol)
 
 
-def test_operator_equivalence_cable_random_v():
+def test_operator_equivalence_cable_random_v() -> None:
     """G @ v matches Jaxley's axial vectorfield for random voltages on a cable."""
     branch = _make_branch(ncomp=8)
     rng = np.random.default_rng(42)
@@ -258,7 +274,7 @@ def test_operator_equivalence_cable_random_v():
         _compare_G_vs_vectorfield(branch, v)
 
 
-def test_operator_equivalence_cable_nonuniform_v():
+def test_operator_equivalence_cable_nonuniform_v() -> None:
     """G @ v matches Jaxley's axial vectorfield for structured voltage patterns."""
     branch = _make_branch(ncomp=8)
     n = 8
@@ -273,7 +289,7 @@ def test_operator_equivalence_cable_nonuniform_v():
     _compare_G_vs_vectorfield(branch, v_spike)
 
 
-def test_operator_equivalence_branched_random_v():
+def test_operator_equivalence_branched_random_v() -> None:
     """G @ v matches Jaxley's axial vectorfield for random v on a Y-cell."""
     cell = _make_cell_two_branches()
     ncomp = 7  # 4 + 3
@@ -283,7 +299,7 @@ def test_operator_equivalence_branched_random_v():
         _compare_G_vs_vectorfield(cell, v)
 
 
-def test_operator_equivalence_branched_nonuniform_v():
+def test_operator_equivalence_branched_nonuniform_v() -> None:
     """G @ v matches Jaxley's axial vectorfield for structured v on a Y-cell."""
     cell = _make_cell_two_branches()
     ncomp = 7
@@ -300,14 +316,14 @@ def test_operator_equivalence_branched_nonuniform_v():
 # ---------------------------------------------------------------------------
 
 
-def test_branched_cell_G_symmetric_for_uniform_params():
+def test_branched_cell_G_symmetric_for_uniform_params() -> None:
     """For a Y-cell with uniform params, G should be symmetric."""
     cell = _make_cell_two_branches()
     G = _build_G(cell)
     np.testing.assert_allclose(G, G.T, atol=1e-10)
 
 
-def test_cable_G_asymmetric_for_nonuniform_radius():
+def test_cable_G_asymmetric_for_nonuniform_radius() -> None:
     """With varying radius per compartment, G is NOT symmetric.
 
     This proves the symmetry claim is correctly limited to uniform params.
@@ -333,7 +349,7 @@ def test_cable_G_asymmetric_for_nonuniform_radius():
 # ---------------------------------------------------------------------------
 
 
-def _make_uniform_cable(ncomp, total_length_um=4000.0):
+def _make_uniform_cable(ncomp: int, total_length_um: float = 4000.0) -> jx.Branch:
     """Build a cable with coordinates consistent with compartment length.
 
     Sets xyzr so that coordinate spacing equals the per-compartment length,
@@ -352,7 +368,7 @@ def _make_uniform_cable(ncomp, total_length_um=4000.0):
     return branch
 
 
-def _analytical_d2phi_dx2(x, x_e, y_e, sigma):
+def _analytical_d2phi_dx2(x: np.ndarray, x_e: float, y_e: float, sigma: float) -> np.ndarray:
     """Closed-form second spatial derivative of point-source phi_e [mV/um^2].
 
     phi_e [mV] = 1e3 / (4*pi*sigma * r)  for I = 1 uA
@@ -364,7 +380,7 @@ def _analytical_d2phi_dx2(x, x_e, y_e, sigma):
     return C * (2 * dx**2 - y_e**2) / r2**2.5
 
 
-def test_analytical_activating_function_interior():
+def test_analytical_activating_function_interior() -> None:
     """G @ phi_e matches analytical d^2phi_e/dx^2 for interior compartments.
 
     For a uniform cable with axial conductance g and spacing dx:
@@ -378,10 +394,12 @@ def test_analytical_activating_function_interior():
     y_e = 1000.0
 
     branch = _make_uniform_cable(ncomp, total_length)
-    params = branch.get_all_parameters(pstate=[])
+    params = cast(ECSParameters, branch.get_all_parameters(pstate=[]))
     G = np.asarray(build_voltage_operator_G(branch, params), dtype=np.float64)
 
-    x = branch.nodes["x"].values.astype(np.float64)
+    ensure_compartment_centers(branch)
+    comp_xyz = np.asarray(get_compartment_xyz(branch), dtype=np.float64)
+    x = comp_xyz[:, 0]
     dx = float(x[1] - x[0])
     x_e = total_length / 2.0
 
@@ -408,7 +426,7 @@ def test_analytical_activating_function_interior():
     )
 
 
-def test_analytical_activating_function_convergence():
+def test_analytical_activating_function_convergence() -> None:
     """Truncation error between G @ phi_e and analytical decreases as O(dx^2).
 
     Halving dx (doubling ncomp) should reduce the relative error by ~4x,
@@ -420,13 +438,15 @@ def test_analytical_activating_function_convergence():
     x_e = total_length / 2.0
 
     ncomps = [50, 100, 200, 400]
-    errors = []
+    errors: list[float] = []
 
     for ncomp in ncomps:
         branch = _make_uniform_cable(ncomp, total_length)
-        params = branch.get_all_parameters(pstate=[])
+        params = cast(ECSParameters, branch.get_all_parameters(pstate=[]))
         G = np.asarray(build_voltage_operator_G(branch, params), dtype=np.float64)
-        x = branch.nodes["x"].values.astype(np.float64)
+        ensure_compartment_centers(branch)
+        comp_xyz = np.asarray(get_compartment_xyz(branch), dtype=np.float64)
+        x = comp_xyz[:, 0]
         dx = float(x[1] - x[0])
         g_ax = G[ncomp // 2, ncomp // 2 - 1]
 
@@ -441,8 +461,8 @@ def test_analytical_activating_function_convergence():
         # Central 10% for clean convergence
         lo = int(ncomp * 0.45)
         hi = int(ncomp * 0.55)
-        rel_err = np.max(
-            np.abs(Gphi[lo:hi] - analytical[lo:hi]) / (np.abs(analytical[lo:hi]) + 1e-30)
+        rel_err = float(
+            np.max(np.abs(Gphi[lo:hi] - analytical[lo:hi]) / (np.abs(analytical[lo:hi]) + 1e-30))
         )
         errors.append(rel_err)
 

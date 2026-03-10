@@ -10,6 +10,8 @@ Confirms that jax.grad flows through every differentiable parameter:
 
 from __future__ import annotations
 
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import jaxley as jx
@@ -22,6 +24,7 @@ from jaxley_extracellular.extracellular.jaxley_adapter import (
     ensure_compartment_centers,
     get_compartment_xyz,
 )
+from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 # ---------------------------------------------------------------------------
 # Shared setup
@@ -44,13 +47,13 @@ def _make_branch(ncomp: int = 4) -> jx.Branch:
     return branch
 
 
-def _static_ecs_parts(branch: jx.Branch) -> tuple:
+def _static_ecs_parts(branch: jx.Branch) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Pre-compute the parts of the ECS pipeline that don't need to be traced."""
     ensure_compartment_centers(branch)
     comp_xyz = jnp.asarray(get_compartment_xyz(branch))  # static constant in JAX
 
     branch.to_jax()
-    params = branch.get_all_parameters(pstate=[])
+    params = cast(ECSParameters, branch.get_all_parameters(pstate=[]))
     G = build_voltage_operator_G(branch, params)  # static (Ncomp, Ncomp)
     idx = np.asarray(branch.base._internal_node_inds)
     cm = params["capacitance"][idx]  # static (Ncomp,)
@@ -63,7 +66,7 @@ def _static_ecs_parts(branch: jx.Branch) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def test_grad_wrt_current_waveform():
+def test_grad_wrt_current_waveform() -> None:
     """jax.grad flows through point_source_potential + phi_e_to_ecs_nA w.r.t. I(t)."""
     branch = _make_branch(ncomp=4)
     comp_xyz, G, cm, area = _static_ecs_parts(branch)
@@ -81,7 +84,7 @@ def test_grad_wrt_current_waveform():
         return i_ecs[0].sum()
 
     electrode_current = jnp.ones((T,))
-    grad = jax.grad(loss)(electrode_current)
+    grad = cast(jax.Array, jax.grad(loss)(electrode_current))
 
     assert grad.shape == (T,), f"Expected ({T},), got {grad.shape}"
     assert jnp.all(jnp.isfinite(grad)), "Gradient contains non-finite values"
@@ -93,7 +96,7 @@ def test_grad_wrt_current_waveform():
 # ---------------------------------------------------------------------------
 
 
-def test_grad_wrt_electrode_pos():
+def test_grad_wrt_electrode_pos() -> None:
     """jax.grad flows through point_source_potential w.r.t. electrode_pos."""
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
@@ -106,14 +109,14 @@ def test_grad_wrt_electrode_pos():
         return phi_e.sum()
 
     electrode_pos = jnp.array([50.0, 50.0, 0.0])
-    grad = jax.grad(loss)(electrode_pos)
+    grad = cast(jax.Array, jax.grad(loss)(electrode_pos))
 
     assert grad.shape == (3,), f"Expected (3,), got {grad.shape}"
     assert jnp.all(jnp.isfinite(grad)), "Gradient contains non-finite values"
     assert jnp.any(grad != 0.0), "Gradient is unexpectedly all-zero"
 
 
-def test_grad_electrode_pos_points_away_from_cell():
+def test_grad_electrode_pos_points_away_from_cell() -> None:
     """Moving the electrode away should reduce phi_e -- check sign via grad."""
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
@@ -128,7 +131,7 @@ def test_grad_electrode_pos_points_away_from_cell():
     # Electrode directly above the cable midpoint.
     # Moving it along +y increases distance to all compartments -> phi_e decreases.
     pos = jnp.array([50.0, 100.0, 0.0])
-    grad = jax.grad(total_phi_e)(pos)
+    grad = cast(jax.Array, jax.grad(total_phi_e)(pos))
 
     # d(phi_e)/d(y) should be negative (moving away reduces potential)
     assert float(grad[1]) < 0.0, f"Expected negative y-gradient, got {float(grad[1])}"
@@ -139,7 +142,7 @@ def test_grad_electrode_pos_points_away_from_cell():
 # ---------------------------------------------------------------------------
 
 
-def test_grad_wrt_sigma():
+def test_grad_wrt_sigma() -> None:
     """jax.grad flows through point_source_potential w.r.t. sigma."""
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
@@ -151,7 +154,7 @@ def test_grad_wrt_sigma():
         phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
         return phi_e.sum()
 
-    grad = jax.grad(loss)(jnp.array(0.3))
+    grad = cast(jax.Array, jax.grad(loss)(jnp.array(0.3)))
 
     assert jnp.isfinite(grad), "Gradient w.r.t. sigma is non-finite"
     # Higher sigma -> lower phi_e, so gradient should be negative.
@@ -163,7 +166,7 @@ def test_grad_wrt_sigma():
 # ---------------------------------------------------------------------------
 
 
-def test_grad_through_integrate_wrt_amplitude():
+def test_grad_through_integrate_wrt_amplitude() -> None:
     """jax.grad flows end-to-end through the full jx.integrate pipeline.
 
     Differentiates a scalar loss (sum of recorded voltages) w.r.t. a scalar
@@ -194,7 +197,7 @@ def test_grad_through_integrate_wrt_amplitude():
             data_stimuli=data_stimuli,
             solver="bwd_euler",
         )
-        return v.sum()
+        return jnp.asarray(v).sum()
 
     val, grad = jax.value_and_grad(loss)(jnp.array(1.0))
 

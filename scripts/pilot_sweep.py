@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, Protocol, TypedDict, cast
 
 import jax
 import jax.numpy as jnp
@@ -52,21 +54,39 @@ RECORD_COMP = 0
 # -----------------------------------------------------------------------
 
 
-def _make_mono_cathodic(amplitude, pw_steps, t_idx):
+class SweepRow(TypedDict):
+    waveform_type: str
+    pulse_width_ms: float
+    electrode_distance_um: float
+    threshold_uA: float
+    charge_nC: float
+    time_s: float
+
+
+class ECSExperiment(Protocol):
+    def simulate_and_extract(self, waveform: jax.Array, record_comp: int) -> dict[str, Any]: ...
+
+
+WaveformFactory = Callable[[jax.Array, jax.Array, jax.Array], jax.Array]
+
+
+def _make_mono_cathodic(amplitude: jax.Array, pw_steps: jax.Array, t_idx: jax.Array) -> jax.Array:
     return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
 
 
-def _make_mono_anodic(amplitude, pw_steps, t_idx):
+def _make_mono_anodic(amplitude: jax.Array, pw_steps: jax.Array, t_idx: jax.Array) -> jax.Array:
     return jnp.where(t_idx < pw_steps, amplitude, 0.0)
 
 
-def _make_biphasic_cathodic_first(amplitude, pw_steps, t_idx):
+def _make_biphasic_cathodic_first(
+    amplitude: jax.Array, pw_steps: jax.Array, t_idx: jax.Array
+) -> jax.Array:
     cathodic = jnp.where(t_idx < pw_steps, -amplitude, 0.0)
     anodic = jnp.where((t_idx >= pw_steps) & (t_idx < 2 * pw_steps), amplitude, 0.0)
     return cathodic + anodic
 
 
-WAVEFORM_FACTORIES = {
+WAVEFORM_FACTORIES: dict[str, WaveformFactory] = {
     "monophasic_cathodic": _make_mono_cathodic,
     "monophasic_anodic": _make_mono_anodic,
     "biphasic_cathodic_first": _make_biphasic_cathodic_first,
@@ -78,7 +98,13 @@ WAVEFORM_FACTORIES = {
 # -----------------------------------------------------------------------
 
 
-def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
+def _find_thresholds_batched(
+    exp: ECSExperiment,
+    factory: WaveformFactory,
+    pw_steps_arr: jax.Array,
+    T: int,
+    n_iter: int,
+) -> jax.Array:
     """Binary search over amplitude, vmapped across pulse widths.
 
     Parameters
@@ -103,14 +129,14 @@ def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
 
     @jax.jit
     @jax.vmap
-    def _test(amp, pw_steps):
+    def _test(amp: jax.Array, pw_steps: jax.Array) -> jax.Array:
         w = factory(amp, pw_steps, t_idx)
         feats = exp.simulate_and_extract(w, RECORD_COMP)
-        return feats["spiked"]
+        return cast(jax.Array, feats["spiked"])
 
     for _ in range(n_iter):
         mid = (lo + hi) / 2.0
-        spiked = _test(mid, pw_steps_arr)
+        spiked: jax.Array = cast(jax.Array, _test(mid, pw_steps_arr))
         lo = jnp.where(spiked, lo, mid)
         hi = jnp.where(spiked, mid, hi)
 
@@ -122,7 +148,7 @@ def _find_thresholds_batched(exp, factory, pw_steps_arr, T, n_iter):
 # -----------------------------------------------------------------------
 
 
-def run_sweep(outdir: Path):
+def run_sweep(outdir: Path) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
 
     total_configs = len(PULSE_WIDTHS_MS) * len(WAVEFORM_TYPES) * len(ELECTRODE_DISTANCES_UM)
@@ -135,7 +161,7 @@ def run_sweep(outdir: Path):
 
     T = int(T_MS / DT_MS)
     pw_steps_arr = jnp.array([int(pw / DT_MS) for pw in PULSE_WIDTHS_MS])
-    results = []
+    results: list[SweepRow] = []
 
     for dist_um in ELECTRODE_DISTANCES_UM:
         exp = make_hh_cable_experiment(
@@ -165,7 +191,7 @@ def run_sweep(outdir: Path):
             for i, pw_ms in enumerate(PULSE_WIDTHS_MS):
                 thr_val = float(thresholds_np[i])
                 charge_nC = thr_val * pw_ms
-                row = {
+                row: SweepRow = {
                     "waveform_type": wtype,
                     "pulse_width_ms": float(pw_ms),
                     "electrode_distance_um": float(dist_um),
@@ -181,7 +207,14 @@ def run_sweep(outdir: Path):
             print()
 
     # Save results
-    out = {k: np.array([r[k] for r in results]) for k in results[0]}
+    out: dict[str, np.ndarray] = {
+        "waveform_type": np.array([r["waveform_type"] for r in results]),
+        "pulse_width_ms": np.array([r["pulse_width_ms"] for r in results]),
+        "electrode_distance_um": np.array([r["electrode_distance_um"] for r in results]),
+        "threshold_uA": np.array([r["threshold_uA"] for r in results]),
+        "charge_nC": np.array([r["charge_nC"] for r in results]),
+        "time_s": np.array([r["time_s"] for r in results]),
+    }
     # String arrays need object dtype
     out["waveform_type"] = np.array([r["waveform_type"] for r in results])
     outpath = outdir / "pilot_sweep.npz"

@@ -67,7 +67,7 @@ def _integrate_with_ecs(branch: jx.Branch, phi_e_mV: jnp.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def test_zero_phi_e_matches_baseline():
+def test_zero_phi_e_matches_baseline() -> None:
     """With phi_e = 0, integrate should produce identical voltage to baseline."""
     branch = _make_recorded_branch(ncomp=4)
     baseline = _baseline_voltage(branch)
@@ -86,7 +86,7 @@ def test_zero_phi_e_matches_baseline():
 # ---------------------------------------------------------------------------
 
 
-def test_uniform_phi_e_matches_baseline():
+def test_uniform_phi_e_matches_baseline() -> None:
     """Spatially uniform phi_e has G @ phi_e = 0, so voltage must equal baseline."""
     branch = _make_recorded_branch(ncomp=4)
     baseline = _baseline_voltage(branch)
@@ -108,7 +108,7 @@ def test_uniform_phi_e_matches_baseline():
 # ---------------------------------------------------------------------------
 
 
-def test_nonuniform_phi_e_changes_voltage():
+def test_nonuniform_phi_e_changes_voltage() -> None:
     """A spatial phi_e gradient must produce a measurable voltage change."""
     branch = _make_recorded_branch(ncomp=4)
     baseline = _baseline_voltage(branch)
@@ -132,7 +132,7 @@ def test_nonuniform_phi_e_changes_voltage():
 # ---------------------------------------------------------------------------
 
 
-def test_point_source_potential_units():
+def test_point_source_potential_units() -> None:
     """Verify phi_e magnitude against hand-calculated value.
 
     Setup: I=1 uA, sigma=0.3 S/m, r=100 um
@@ -150,7 +150,7 @@ def test_point_source_potential_units():
     np.testing.assert_allclose(float(phi_e[0, 0]), expected, rtol=1e-6)
 
 
-def test_point_source_potential_shape():
+def test_point_source_potential_shape() -> None:
     Ncomp = 5
     T = 20
     comp_xyz = np.random.default_rng(0).uniform(size=(Ncomp, 3)) * 200.0
@@ -160,7 +160,7 @@ def test_point_source_potential_shape():
     assert phi_e.shape == (Ncomp, T)
 
 
-def test_point_source_potential_farther_smaller():
+def test_point_source_potential_farther_smaller() -> None:
     """Farther compartments must see smaller phi_e."""
     comp_xyz = np.array([[50.0, 0.0, 0.0], [200.0, 0.0, 0.0]])
     electrode_pos = np.array([0.0, 0.0, 0.0])
@@ -174,7 +174,7 @@ def test_point_source_potential_farther_smaller():
 # ---------------------------------------------------------------------------
 
 
-def test_full_pipeline_cable():
+def test_full_pipeline_cable() -> None:
     """Point-source electrode -> phi_e -> i_ecs -> jx.integrate -- smoke test."""
     ncomp = 4
     branch = _make_recorded_branch(ncomp=ncomp)
@@ -213,7 +213,7 @@ def test_full_pipeline_cable():
 # ---------------------------------------------------------------------------
 
 
-def test_ensure_compartment_centers_idempotent():
+def test_ensure_compartment_centers_idempotent() -> None:
     """Calling ensure_compartment_centers twice should not raise or corrupt data."""
     comp = jx.Compartment()
     ensure_compartment_centers(comp)
