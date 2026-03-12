@@ -72,6 +72,9 @@ addopts = [
   "-ra",
   "--strict-markers",
 ]
+markers = [
+  "slow: tests that take >1s (JIT compilation, server startup, convergence sweeps)",
+]
 
 [tool.ruff]
 target-version = "py311"

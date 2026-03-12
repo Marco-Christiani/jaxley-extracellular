@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import pytest
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
@@ -29,13 +30,14 @@ class TestMakeDeviceMesh:
         mesh = make_device_mesh()
         assert len(mesh.devices.flat) == jax.device_count()
 
-    def test_custom_axis_name(self) -> None:
-        mesh = make_device_mesh(axis_name="batch")
-        assert mesh.axis_names == ("batch",)
-
-    def test_default_axis_name(self) -> None:
-        mesh = make_device_mesh()
-        assert mesh.axis_names == ("d",)
+    @pytest.mark.parametrize(
+        ("axis_name", "expected"),
+        [("d", ("d",)), ("batch", ("batch",))],
+        ids=["default", "custom"],
+    )
+    def test_axis_name(self, axis_name: str, expected: tuple[str, ...]) -> None:
+        mesh = make_device_mesh(axis_name=axis_name)
+        assert mesh.axis_names == expected
 
 
 # ------------------------------------------------------------------
@@ -61,22 +63,26 @@ class TestConfigSharding:
 
 
 class TestPadToDevices:
-    def test_no_padding_needed(self) -> None:
-        data = jnp.ones(4)
-        padded, pad_count = pad_to_devices(data, 4)
-        assert pad_count == 0
-        assert padded.shape == (4,)
-
-    def test_padding_added(self) -> None:
-        data = jnp.ones(5)
-        padded, pad_count = pad_to_devices(data, 4)
-        assert pad_count == 3
-        assert padded.shape == (8,)
+    @pytest.mark.parametrize(
+        ("n_data", "n_devices", "expected_pad", "expected_shape"),
+        [
+            (4, 4, 0, (4,)),
+            (5, 4, 3, (8,)),
+            (3, 4, 1, (4,)),
+        ],
+        ids=["exact", "needs_padding", "one_short"],
+    )
+    def test_padding_count_and_shape(
+        self, n_data: int, n_devices: int, expected_pad: int, expected_shape: tuple[int, ...]
+    ) -> None:
+        data = jnp.ones(n_data)
+        padded, pad_count = pad_to_devices(data, n_devices)
+        assert pad_count == expected_pad
+        assert padded.shape == expected_shape
 
     def test_padding_values_are_zero(self) -> None:
         data = jnp.ones(3)
-        padded, pad_count = pad_to_devices(data, 4)
-        assert pad_count == 1
+        padded, _ = pad_to_devices(data, 4)
         assert float(padded[3]) == 0.0
 
     def test_preserves_original_data(self) -> None:

@@ -16,6 +16,7 @@ import jax
 import jax.numpy as jnp
 import jaxley as jx
 import numpy as np
+import pytest
 
 from jaxley_extracellular.extracellular.discretization import build_voltage_operator_G
 from jaxley_extracellular.extracellular.equivalent_current import phi_e_to_ecs_nA
@@ -166,6 +167,7 @@ def test_grad_wrt_sigma() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_grad_through_integrate_wrt_amplitude() -> None:
     """jax.grad flows end-to-end through the full jx.integrate pipeline.
 

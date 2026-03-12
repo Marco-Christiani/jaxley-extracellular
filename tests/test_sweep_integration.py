@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -22,74 +23,68 @@ from jaxley_extracellular.extracellular.sharding import (
 from jaxley_extracellular.extracellular.tracker import NullTracker
 
 
+@pytest.fixture(scope="session")
+def tiny_zarr(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Run a minimal sweep and return the Zarr path."""
+    from jaxley_extracellular.extracellular.experiment import make_hh_cable_experiment
+
+    exp = make_hh_cable_experiment(
+        ncomp=4,
+        cable_length_um=500.0,
+        radius_um=10.0,
+        electrode_distance_um=50.0,
+        sigma=0.3,
+        dt_ms=0.025,
+        T_ms=1.0,
+    )
+
+    T = int(1.0 / 0.025)
+    pw_ms_list = [0.1, 0.2]
+    pw_steps_arr = jnp.array([int(pw / 0.025) for pw in pw_ms_list])
+    t_idx = jnp.arange(T)
+
+    def factory(amplitude: Any, pw_steps: Any, t_idx: Any) -> Any:
+        return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
+
+    N = len(pw_ms_list)
+    lo = jnp.full(N, 0.0, dtype=jnp.float32)
+    hi = jnp.full(N, 5000.0, dtype=jnp.float32)
+
+    @jax.jit
+    @jax.vmap
+    def _test(amp: Any, pw_steps: Any) -> Any:
+        w = factory(amp, pw_steps, t_idx)
+        feats = exp.simulate_and_extract(w, 0)
+        return feats["spiked"]
+
+    for _ in range(6):
+        mid = (lo + hi) / 2.0
+        spiked = cast(Any, _test(mid, pw_steps_arr))
+        lo = jnp.where(spiked, lo, mid)
+        hi = jnp.where(spiked, mid, hi)
+
+    thresholds = np.asarray((lo + hi) / 2.0)
+
+    config_arrays = {
+        "pulse_width_ms": np.array(pw_ms_list),
+        "waveform_type": np.array(["monophasic_cathodic"] * N),
+        "electrode_distance_um": np.full(N, 50.0),
+        "fiber_radius_um": np.full(N, 10.0),
+    }
+    metric_arrays = {
+        "threshold_uA": thresholds,
+        "charge_nC": thresholds * np.array(pw_ms_list),
+        "time_s": np.full(N, 0.0),
+    }
+    ds = make_flat_dataset(config_arrays, metric_arrays)
+    zarr_path = tmp_path_factory.mktemp("sweep") / "test_sweep.zarr"
+    save_zarr(ds, zarr_path)
+    return zarr_path
+
+
+@pytest.mark.slow
 class TestEndToEnd:
     """Tiny model sweep -> Zarr -> load -> verify."""
-
-    @pytest.fixture()
-    def tiny_zarr(self, tmp_path: Path) -> Path:
-        """Run a minimal sweep and return the Zarr path."""
-        from jaxley_extracellular.extracellular.experiment import make_hh_cable_experiment
-
-        # Tiny model: 4 comp, short cable, 1 ms simulation
-        exp = make_hh_cable_experiment(
-            ncomp=4,
-            cable_length_um=500.0,
-            radius_um=10.0,
-            electrode_distance_um=50.0,
-            sigma=0.3,
-            dt_ms=0.025,
-            T_ms=1.0,
-        )
-
-        T = int(1.0 / 0.025)
-        pw_ms_list = [0.1, 0.2]
-        pw_steps_arr = jnp.array([int(pw / 0.025) for pw in pw_ms_list])
-        t_idx = jnp.arange(T)
-
-        # Simple monophasic cathodic factory
-        def factory(amplitude: Any, pw_steps: Any, t_idx: Any) -> Any:
-            return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
-
-        # Manually run binary search (simplified, 6 iterations)
-        N = len(pw_ms_list)
-        lo = jnp.full(N, 0.0, dtype=jnp.float32)
-        hi = jnp.full(N, 5000.0, dtype=jnp.float32)
-
-        from typing import cast
-
-        import jax
-
-        @jax.jit
-        @jax.vmap
-        def _test(amp: Any, pw_steps: Any) -> Any:
-            w = factory(amp, pw_steps, t_idx)
-            feats = exp.simulate_and_extract(w, 0)
-            return feats["spiked"]
-
-        for _ in range(6):
-            mid = (lo + hi) / 2.0
-            spiked = cast(Any, _test(mid, pw_steps_arr))
-            lo = jnp.where(spiked, lo, mid)
-            hi = jnp.where(spiked, mid, hi)
-
-        thresholds = np.asarray((lo + hi) / 2.0)
-
-        # Build dataset and save
-        config_arrays = {
-            "pulse_width_ms": np.array(pw_ms_list),
-            "waveform_type": np.array(["monophasic_cathodic"] * N),
-            "electrode_distance_um": np.full(N, 50.0),
-            "fiber_radius_um": np.full(N, 10.0),
-        }
-        metric_arrays = {
-            "threshold_uA": thresholds,
-            "charge_nC": thresholds * np.array(pw_ms_list),
-            "time_s": np.full(N, 0.0),
-        }
-        ds = make_flat_dataset(config_arrays, metric_arrays)
-        zarr_path = tmp_path / "test_sweep.zarr"
-        save_zarr(ds, zarr_path)
-        return zarr_path
 
     def test_zarr_shape(self, tiny_zarr: Path) -> None:
         ds = load_zarr(tiny_zarr)
@@ -100,7 +95,6 @@ class TestEndToEnd:
     def test_thresholds_positive(self, tiny_zarr: Path) -> None:
         ds = load_zarr(tiny_zarr)
         thresholds = ds["threshold_uA"].values
-        # Thresholds should be positive (binary search between 0 and 5000)
         assert np.all(thresholds >= 0.0)
         assert np.all(thresholds <= 5000.0)
 

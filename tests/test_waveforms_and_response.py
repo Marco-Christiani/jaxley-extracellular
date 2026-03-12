@@ -29,15 +29,17 @@ class TestMonophasicPulse:
         w = make_monophasic_pulse(100.0, 0.5, 0.025, 5.0)
         assert w.shape == (200,)
 
-    def test_cathodic_negative(self) -> None:
-        w = make_monophasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic=True)
-        assert float(w.min()) == pytest.approx(-100.0)
-        assert float(w.max()) == 0.0
-
-    def test_anodic_positive(self) -> None:
-        w = make_monophasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic=False)
-        assert float(w.max()) == pytest.approx(100.0)
-        assert float(w.min()) == 0.0
+    @pytest.mark.parametrize(
+        ("cathodic", "expected_sign"),
+        [(True, -1.0), (False, 1.0)],
+        ids=["cathodic", "anodic"],
+    )
+    def test_polarity(self, cathodic: bool, expected_sign: float) -> None:
+        w = make_monophasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic=cathodic)
+        extreme = float(w.min()) if cathodic else float(w.max())
+        assert extreme == pytest.approx(expected_sign * 100.0)
+        zero_side = float(w.max()) if cathodic else float(w.min())
+        assert zero_side == 0.0
 
     def test_pulse_width(self) -> None:
         w = make_monophasic_pulse(1.0, 1.0, 0.025, 5.0)
@@ -61,16 +63,18 @@ class TestBiphasicPulse:
         w = make_biphasic_pulse(100.0, 0.5, 0.025, 5.0)
         assert float(jnp.abs(w.sum())) == pytest.approx(0.0, abs=1e-4)
 
-    def test_cathodic_first(self) -> None:
-        w = make_biphasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic_first=True)
-        # First nonzero sample should be negative
+    @pytest.mark.parametrize(
+        ("cathodic_first", "first_positive"),
+        [(True, False), (False, True)],
+        ids=["cathodic_first", "anodic_first"],
+    )
+    def test_leading_phase(self, cathodic_first: bool, first_positive: bool) -> None:
+        w = make_biphasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic_first=cathodic_first)
         first_nonzero = w[w != 0][0]
-        assert float(first_nonzero) < 0
-
-    def test_anodic_first(self) -> None:
-        w = make_biphasic_pulse(100.0, 0.5, 0.025, 5.0, cathodic_first=False)
-        first_nonzero = w[w != 0][0]
-        assert float(first_nonzero) > 0
+        if first_positive:
+            assert float(first_nonzero) > 0
+        else:
+            assert float(first_nonzero) < 0
 
     def test_interphase_gap(self) -> None:
         w = make_biphasic_pulse(100.0, 0.5, 0.025, 5.0, interphase_ms=0.5)

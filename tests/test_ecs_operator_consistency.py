@@ -380,6 +380,7 @@ def _analytical_d2phi_dx2(x: np.ndarray, x_e: float, y_e: float, sigma: float) -
     return C * (2 * dx**2 - y_e**2) / r2**2.5
 
 
+@pytest.mark.slow
 def test_analytical_activating_function_interior() -> None:
     """G @ phi_e matches analytical d^2phi_e/dx^2 for interior compartments.
 
@@ -426,6 +427,7 @@ def test_analytical_activating_function_interior() -> None:
     )
 
 
+@pytest.mark.slow
 def test_analytical_activating_function_convergence() -> None:
     """Truncation error between G @ phi_e and analytical decreases as O(dx^2).
 

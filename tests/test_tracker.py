@@ -94,6 +94,7 @@ def mlflow_server(tmp_path_factory: pytest.TempPathFactory) -> Generator[str, No
     proc.wait(timeout=5)
 
 
+@pytest.mark.slow
 class TestMLflowTracker:
     def test_satisfies_protocol(self) -> None:
         pytest.importorskip("mlflow")
