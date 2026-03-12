@@ -38,6 +38,28 @@ output "tracking_db_uri" {
   sensitive   = true
 }
 
+# ---------- Tracking server ----------
+
+output "tracking_server_internal_ip" {
+  value       = var.enable_tracking_server ? google_compute_instance.tracking[0].network_interface[0].network_ip : ""
+  description = "Internal IP of the tracking server (for same-VPC access)"
+}
+
+output "tracking_server_external_ip" {
+  value       = var.enable_tracking_server ? google_compute_address.tracking[0].address : ""
+  description = "Static external IP of the tracking server"
+}
+
+output "tracking_server_url" {
+  value       = var.enable_tracking_server ? "http://${google_compute_instance.tracking[0].network_interface[0].network_ip}:${var.tracking_server_port}" : ""
+  description = "Tracking server URL for same-VPC experiments (TPU VMs)"
+}
+
+output "tracking_server_external_url" {
+  value       = var.enable_tracking_server ? "http://${google_compute_address.tracking[0].address}:${var.tracking_server_port}" : ""
+  description = "Tracking server URL for external experiments (local machine)"
+}
+
 # ---------- GCS artifact bucket ----------
 
 output "artifact_bucket_name" {

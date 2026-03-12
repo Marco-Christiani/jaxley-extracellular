@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
 version: "3"
 
 vars:
@@ -10,47 +12,51 @@ vars:
   PG_URI: "postgresql://{{.PGUSER}}:{{.PGPASSWORD}}@127.0.0.1:{{.PGPORT}}/{{.PGDATABASE}}"
   # Container runtime (docker or podman)
   CONTAINER_RT: docker
+  # Tofu shorthand
+  TOFU: tofu -chdir=infra/tofu
 
 tasks:
+  # ---------- OpenTofu ----------
+
   tpu:init:
     desc: Initialize OpenTofu in infra/tofu
     cmds:
-      - tofu -chdir=infra/tofu init
+      - "{{.TOFU}} init"
 
   tpu:plan:
-    desc: Plan OpenTofu changes for TPU VM
+    desc: Plan OpenTofu changes
     cmds:
-      - tofu -chdir=infra/tofu plan
+      - "{{.TOFU}} plan"
 
   tpu:apply:
-    desc: Apply OpenTofu changes for TPU VM
+    desc: Apply OpenTofu changes
     cmds:
-      - tofu -chdir=infra/tofu apply
+      - "{{.TOFU}} apply"
 
   tpu:destroy:
-    desc: Destroy TPU VM via OpenTofu
+    desc: Destroy all OpenTofu-managed resources
     cmds:
-      - tofu -chdir=infra/tofu destroy
+      - "{{.TOFU}} destroy"
 
   tpu:ssh:
-    desc: SSH to TPU VM from OpenTofu outputs
+    desc: SSH to TPU VM
     cmds:
-      - gcloud compute tpus tpu-vm ssh "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw name)" --zone "$({{.TOFU}} output -raw zone)"
 
   tpu:start:
-    desc: Start TPU VM from OpenTofu outputs
+    desc: Start TPU VM
     cmds:
-      - gcloud compute tpus tpu-vm start "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+      - gcloud compute tpus tpu-vm start "$({{.TOFU}} output -raw name)" --zone "$({{.TOFU}} output -raw zone)"
 
   tpu:stop:
-    desc: Stop TPU VM from OpenTofu outputs
+    desc: Stop TPU VM
     cmds:
-      - gcloud compute tpus tpu-vm stop "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)"
+      - gcloud compute tpus tpu-vm stop "$({{.TOFU}} output -raw name)" --zone "$({{.TOFU}} output -raw zone)"
 
   tpu:sync:
     desc: Sync tracked and non-ignored files to TPU VM
     cmds:
-      - sh -lc 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | gcloud compute tpus tpu-vm ssh "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)" --command "mkdir -p ~/jaxley-extracellular && tar -xf - -C ~/jaxley-extracellular"'
+      - sh -lc 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw name)" --zone "$({{.TOFU}} output -raw zone)" --command "mkdir -p ~/jaxley-extracellular && tar -xf - -C ~/jaxley-extracellular"'
 
   # ---------- Local Postgres ----------
 
@@ -83,7 +89,8 @@ tasks:
     desc: Start local Postgres in a container
     cmds:
       - |
-        {{.CONTAINER_RT}} run -d --name mlflow-pg --replace \
+        {{.CONTAINER_RT}} rm -f mlflow-pg 2>/dev/null || true
+        {{.CONTAINER_RT}} run -d --name mlflow-pg \
           -p {{.PGPORT}}:5432 \
           -e POSTGRES_DB={{.PGDATABASE}} \
           -e POSTGRES_USER={{.PGUSER}} \
@@ -97,32 +104,56 @@ tasks:
     cmds:
       - "{{.CONTAINER_RT}} stop mlflow-pg"
 
-  # ---------- Experiment tracking ----------
+  # ---------- Tracking server (local) ----------
 
   tracking:server:
-    desc: Start MLflow tracking server (local Postgres + local artifacts)
+    desc: Start tracking server (local Postgres + local artifacts)
     cmds:
       - mkdir -p results/mlartifacts
       - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port 5000
 
-  tracking:server:gcs:
-    desc: Start MLflow tracking server (local Postgres + GCS artifact store)
-    cmds:
-      - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root "$(tofu -chdir=infra/tofu output -raw artifact_bucket_uri)/mlflow" --host 127.0.0.1 --port 5000
+  # ---------- Tracking server (remote) ----------
 
-  tracking:server:cloud:
-    desc: Start MLflow tracking server (Cloud SQL + GCS artifact store)
+  tracking:remote:start:
+    desc: Start the remote tracking server instance
     cmds:
-      - mlflow server --backend-store-uri "$(tofu -chdir=infra/tofu output -raw tracking_db_uri)" --default-artifact-root "$(tofu -chdir=infra/tofu output -raw artifact_bucket_uri)/mlflow" --host 127.0.0.1 --port 5000
+      - gcloud compute instances start "$({{.TOFU}} output -raw name)-tracking" --zone "$({{.TOFU}} output -raw zone)"
+      - echo "Tracking server starting at $({{.TOFU}} output -raw tracking_server_external_url)"
 
-  tracking:server:lite:
-    desc: Start MLflow tracking server (SQLite, no Postgres needed)
+  tracking:remote:stop:
+    desc: Stop the remote tracking server instance
     cmds:
-      - mkdir -p results/mlartifacts
-      - mlflow server --backend-store-uri sqlite:///results/tracking.db --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port 5000
+      - gcloud compute instances stop "$({{.TOFU}} output -raw name)-tracking" --zone "$({{.TOFU}} output -raw zone)"
+
+  tracking:remote:ssh:
+    desc: SSH to the remote tracking server
+    cmds:
+      - gcloud compute ssh "$({{.TOFU}} output -raw name)-tracking" --zone "$({{.TOFU}} output -raw zone)"
+
+  tracking:remote:url:
+    desc: Print the remote tracking server URL
+    cmds:
+      - echo "Internal (VPC):  $({{.TOFU}} output -raw tracking_server_url)"
+      - echo "External:        $({{.TOFU}} output -raw tracking_server_external_url)"
+
+  tracking:remote:logs:
+    desc: Tail the tracking server logs
+    cmds:
+      - gcloud compute ssh "$({{.TOFU}} output -raw name)-tracking" --zone "$({{.TOFU}} output -raw zone)" --command "journalctl -u tracking-server -f"
+
+  # ---------- UI ----------
 
   tracking:ui:
-    desc: Open MLflow UI in browser
+    desc: Open local tracking UI in browser
     cmds:
-      - echo "MLflow UI at http://127.0.0.1:5000"
+      - echo "Tracking UI at http://127.0.0.1:5000"
       - xdg-open http://127.0.0.1:5000 2>/dev/null || open http://127.0.0.1:5000 2>/dev/null || true
+
+  tracking:remote:ui:
+    desc: Open remote tracking UI in browser
+    vars:
+      URL:
+        sh: "{{.TOFU}} output -raw tracking_server_external_url"
+    cmds:
+      - echo "Tracking UI at {{.URL}}"
+      - xdg-open "{{.URL}}" 2>/dev/null || open "{{.URL}}" 2>/dev/null || true

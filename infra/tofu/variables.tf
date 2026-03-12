@@ -105,6 +105,44 @@ variable "tracking_db_password" {
   default     = ""
 }
 
+# ---------- Tracking server ----------
+
+variable "enable_tracking_server" {
+  description = "Whether to create a GCE instance for the tracking server."
+  type        = bool
+  default     = false
+}
+
+variable "tracking_server_machine_type" {
+  description = "GCE machine type for the tracking server."
+  type        = string
+  default     = "e2-micro"
+}
+
+variable "tracking_server_port" {
+  description = "Port the tracking server listens on."
+  type        = number
+  default     = 5000
+}
+
+variable "tracking_server_package" {
+  description = "Python package to install for the tracking server (e.g. mlflow, aim)."
+  type        = string
+  default     = "mlflow>=2.12"
+}
+
+variable "tracking_server_command" {
+  description = "Binary name installed by tracking_server_package (e.g. mlflow, aim)."
+  type        = string
+  default     = "mlflow"
+}
+
+variable "tracking_server_allowed_cidrs" {
+  description = "External CIDRs allowed to reach the tracking server (in addition to VPC internal)."
+  type        = list(string)
+  default     = []
+}
+
 # ---------- GCS artifact bucket ----------
 
 variable "enable_artifact_bucket" {
