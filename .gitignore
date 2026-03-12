@@ -213,7 +213,7 @@ __marimo__/
 !infra/tofu/.terraform.lock.hcl
 *.local.*
 .direnv/
-/result/
+/result
 
 # OpenTofu local state and local vars
 infra/tofu/.terraform/
@@ -223,5 +223,7 @@ infra/tofu/terraform.tfvars
 reference
 
 # outputs
-/results
-results/*.npz
+results
+results
+*.zarr
+mlruns/

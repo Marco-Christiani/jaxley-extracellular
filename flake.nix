@@ -53,6 +53,17 @@
         # site-packages/tests/, which pyproject.nix refuses to merge.
         # These tests are not needed at runtime, so we delete the `tests/` package
         # from jaxley-mech during install.
+        # asciitree (zarr dep) ships only an sdist and needs setuptools.
+        buildFixOverlay = final: prev: {
+          asciitree = prev.asciitree.overrideAttrs (old: {
+            nativeBuildInputs =
+              (old.nativeBuildInputs or [])
+              ++ [
+                final.setuptools
+              ];
+          });
+        };
+
         collisionFixOverlay = final: prev: {
           jaxley-mech = prev."jaxley-mech".overrideAttrs (old: {
             postInstall =
@@ -67,6 +78,7 @@
           pkgs.lib.composeManyExtensions [
             pyproject-build-systems.wheel
             overlay
+            buildFixOverlay
             collisionFixOverlay
           ]
         );
@@ -75,6 +87,7 @@
           pkgs.lib.composeManyExtensions [
             pyproject-build-systems.wheel
             overlay
+            buildFixOverlay
             collisionFixOverlay
           ]
         );
@@ -214,6 +227,7 @@
           pytest = mkCheck "jaxley-extracellular-pytest" ''
             export JAX_PLATFORMS=cpu
             ${testVenv}/bin/pytest -q
+            echo "pytest done"
           '';
 
           ruff = mkCheck "jaxley-extracellular-ruff" ''

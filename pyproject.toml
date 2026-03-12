@@ -17,6 +17,9 @@ dependencies = [
   "jaxley>=0.8.0",
   "jaxley-mech>=0.2.0",
   "jaxtyping>=0.3.9",
+  "xarray>=2024.1",
+  "zarr>=2.18,<3",
+  "numcodecs>=0.12,<0.16",
 ]
 
 [project.scripts]
@@ -39,6 +42,10 @@ dev = [
     "pyright>=1.1.408",
     "ruff>=0.15.4",
     "ty>=0.0.19",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg2-binary>=2.9",
+    "mlflow>=2.12",
 ]
 gpu = [
     "jax-cuda12-plugin==0.8.1",
@@ -47,6 +54,16 @@ gpu = [
 tpu = [
     "jax[tpu]==0.8.1",
 ]
+tracking = [
+    "alembic>=1.13",
+    "google-cloud-storage>=2.14",
+    "mlflow>=2.12",
+    "psycopg2-binary>=2.9",
+    "sqlalchemy>=2.0",
+]
+
+[tool.uv.extra-build-dependencies]
+asciitree = ["setuptools"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -99,6 +116,10 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = ["jaxley", "jaxley.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["xarray", "xarray.*", "zarr", "zarr.*", "numcodecs", "numcodecs.*", "mlflow", "mlflow.*", "psycopg2", "psycopg2.*"]
 ignore_missing_imports = true
 
 [tool.pyright]
