@@ -71,3 +71,50 @@ variable "enable_external_ips" {
   type        = bool
   default     = true
 }
+
+# ---------- Cloud SQL (experiment tracking) ----------
+
+variable "enable_tracking_db" {
+  description = "Whether to create a Cloud SQL Postgres instance for experiment tracking."
+  type        = bool
+  default     = false
+}
+
+variable "tracking_db_tier" {
+  description = "Cloud SQL machine tier."
+  type        = string
+  default     = "db-f1-micro"
+}
+
+variable "tracking_db_name" {
+  description = "Database name."
+  type        = string
+  default     = "tracking"
+}
+
+variable "tracking_db_user" {
+  description = "Database user name."
+  type        = string
+  default     = "tracker"
+}
+
+variable "tracking_db_password" {
+  description = "Password for the tracking database user."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# ---------- GCS artifact bucket ----------
+
+variable "enable_artifact_bucket" {
+  description = "Whether to create a GCS bucket for experiment artifacts."
+  type        = bool
+  default     = false
+}
+
+variable "artifact_retention_days" {
+  description = "Days before artifacts are auto-deleted (lifecycle policy)."
+  type        = number
+  default     = 90
+}

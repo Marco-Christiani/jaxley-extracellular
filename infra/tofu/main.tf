@@ -24,6 +24,71 @@ locals {
   EOT
 }
 
+# ---------- Cloud SQL for experiment tracking (opt-in) ----------
+
+resource "google_sql_database_instance" "tracking" {
+  count = var.enable_tracking_db ? 1 : 0
+
+  project          = var.project_id
+  name             = "${var.name}-tracking"
+  region           = replace(var.zone, "/-[a-z]$/", "")
+  database_version = "POSTGRES_16"
+
+  settings {
+    tier              = var.tracking_db_tier
+    availability_type = "ZONAL"
+    edition           = "ENTERPRISE"
+
+    ip_configuration {
+      ipv4_enabled = true
+      authorized_networks {
+        name  = "all"
+        value = "0.0.0.0/0"
+      }
+    }
+
+    backup_configuration {
+      enabled = false
+    }
+  }
+
+  deletion_protection = false
+}
+
+resource "google_sql_database" "tracking" {
+  count    = var.enable_tracking_db ? 1 : 0
+  project  = var.project_id
+  instance = google_sql_database_instance.tracking[0].name
+  name     = var.tracking_db_name
+}
+
+resource "google_sql_user" "tracking" {
+  count    = var.enable_tracking_db ? 1 : 0
+  project  = var.project_id
+  instance = google_sql_database_instance.tracking[0].name
+  name     = var.tracking_db_user
+  password = var.tracking_db_password
+}
+
+# ---------- GCS artifact bucket (opt-in) ----------
+
+resource "google_storage_bucket" "artifacts" {
+  count    = var.enable_artifact_bucket ? 1 : 0
+  project  = var.project_id
+  name     = "${var.project_id}-${var.name}-artifacts"
+  location = replace(var.zone, "/-[a-z]$/", "")
+
+  uniform_bucket_level_access = true
+  force_destroy               = true
+
+  lifecycle_rule {
+    condition { age = var.artifact_retention_days }
+    action { type = "Delete" }
+  }
+}
+
+# ---------- TPU ----------
+
 resource "google_tpu_v2_vm" "this" {
   provider = google-beta
 

@@ -1,5 +1,16 @@
 version: "3"
 
+vars:
+  # Local Postgres settings
+  PGDATA: results/pgdata
+  PGPORT: "5432"
+  PGDATABASE: tracking
+  PGUSER: tracker
+  PGPASSWORD: dev
+  PG_URI: "postgresql://{{.PGUSER}}:{{.PGPASSWORD}}@127.0.0.1:{{.PGPORT}}/{{.PGDATABASE}}"
+  # Container runtime (docker or podman)
+  CONTAINER_RT: docker
+
 tasks:
   tpu:init:
     desc: Initialize OpenTofu in infra/tofu
@@ -40,3 +51,78 @@ tasks:
     desc: Sync tracked and non-ignored files to TPU VM
     cmds:
       - sh -lc 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | gcloud compute tpus tpu-vm ssh "$(tofu -chdir=infra/tofu output -raw name)" --zone "$(tofu -chdir=infra/tofu output -raw zone)" --command "mkdir -p ~/jaxley-extracellular && tar -xf - -C ~/jaxley-extracellular"'
+
+  # ---------- Local Postgres ----------
+
+  tracking:db:
+    desc: Start local Postgres via nix (no container needed)
+    cmds:
+      - |
+        if [ ! -d "{{.PGDATA}}" ]; then
+          echo "Initializing Postgres data directory..."
+          nix shell nixpkgs#postgresql -c initdb -D "{{.PGDATA}}" --no-locale -E UTF8 -U "{{.PGUSER}}"
+        fi
+      - |
+        echo "Starting Postgres on port {{.PGPORT}}..."
+        nix shell nixpkgs#postgresql -c pg_ctl -D "{{.PGDATA}}" -l "{{.PGDATA}}/server.log" \
+          -o "-p {{.PGPORT}} -k /tmp" start
+      - |
+        sleep 1
+        if ! nix shell nixpkgs#postgresql -c psql -h /tmp -p {{.PGPORT}} -U "{{.PGUSER}}" -lqt | grep -qw "{{.PGDATABASE}}"; then
+          nix shell nixpkgs#postgresql -c createdb -h /tmp -p {{.PGPORT}} -U "{{.PGUSER}}" "{{.PGDATABASE}}"
+          echo "Created database '{{.PGDATABASE}}'"
+        fi
+        echo "Postgres ready: {{.PG_URI}}"
+
+  tracking:db:stop:
+    desc: Stop local Postgres
+    cmds:
+      - nix shell nixpkgs#postgresql -c pg_ctl -D "{{.PGDATA}}" stop
+
+  tracking:db:container:
+    desc: Start local Postgres in a container
+    cmds:
+      - |
+        {{.CONTAINER_RT}} run -d --name mlflow-pg --replace \
+          -p {{.PGPORT}}:5432 \
+          -e POSTGRES_DB={{.PGDATABASE}} \
+          -e POSTGRES_USER={{.PGUSER}} \
+          -e POSTGRES_PASSWORD={{.PGPASSWORD}} \
+          -v "$(pwd)/{{.PGDATA}}-container:/var/lib/postgresql/data" \
+          postgres:16
+        echo "Postgres container ready: {{.PG_URI}}"
+
+  tracking:db:container:stop:
+    desc: Stop local Postgres container
+    cmds:
+      - "{{.CONTAINER_RT}} stop mlflow-pg"
+
+  # ---------- Experiment tracking ----------
+
+  tracking:server:
+    desc: Start MLflow tracking server (local Postgres + local artifacts)
+    cmds:
+      - mkdir -p results/mlartifacts
+      - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port 5000
+
+  tracking:server:gcs:
+    desc: Start MLflow tracking server (local Postgres + GCS artifact store)
+    cmds:
+      - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root "$(tofu -chdir=infra/tofu output -raw artifact_bucket_uri)/mlflow" --host 127.0.0.1 --port 5000
+
+  tracking:server:cloud:
+    desc: Start MLflow tracking server (Cloud SQL + GCS artifact store)
+    cmds:
+      - mlflow server --backend-store-uri "$(tofu -chdir=infra/tofu output -raw tracking_db_uri)" --default-artifact-root "$(tofu -chdir=infra/tofu output -raw artifact_bucket_uri)/mlflow" --host 127.0.0.1 --port 5000
+
+  tracking:server:lite:
+    desc: Start MLflow tracking server (SQLite, no Postgres needed)
+    cmds:
+      - mkdir -p results/mlartifacts
+      - mlflow server --backend-store-uri sqlite:///results/tracking.db --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port 5000
+
+  tracking:ui:
+    desc: Open MLflow UI in browser
+    cmds:
+      - echo "MLflow UI at http://127.0.0.1:5000"
+      - xdg-open http://127.0.0.1:5000 2>/dev/null || open http://127.0.0.1:5000 2>/dev/null || true
