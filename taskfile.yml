@@ -133,8 +133,8 @@ tasks:
   tracking:remote:url:
     desc: Print the remote tracking server URL
     cmds:
-      - echo "Internal (VPC):  $({{.TOFU}} output -raw tracking_server_url)"
-      - echo "External:        $({{.TOFU}} output -raw tracking_server_external_url)"
+      - 'echo "Internal (VPC):  $({{.TOFU}} output -raw tracking_server_url)"'
+      - 'echo "External:        $({{.TOFU}} output -raw tracking_server_external_url)"'
 
   tracking:remote:logs:
     desc: Tail the tracking server logs
