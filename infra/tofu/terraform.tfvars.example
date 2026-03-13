@@ -28,6 +28,16 @@ subnetwork          = "default"
 enable_external_ips = true
 
 labels = {
-  owner = "marco"
+  owner = "you"
   env   = "dev"
 }
+
+# ---------- Experiment tracking ----------
+# DB password: set via environment variable, not here.
+#   export TF_VAR_tracking_db_password="..."
+# Allow external access to tracking UI:
+#   tracking_server_allowed_cidrs = ["YOUR_IP/32"]
+# To disable any component:
+#   enable_tracking_db     = false
+#   enable_artifact_bucket = false
+#   enable_tracking_server = false
