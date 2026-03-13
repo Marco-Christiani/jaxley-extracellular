@@ -77,7 +77,7 @@ variable "enable_external_ips" {
 variable "enable_tracking_db" {
   description = "Whether to create a Cloud SQL Postgres instance for experiment tracking."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tracking_db_tier" {
@@ -110,7 +110,7 @@ variable "tracking_db_password" {
 variable "enable_tracking_server" {
   description = "Whether to create a GCE instance for the tracking server."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tracking_server_machine_type" {
@@ -148,7 +148,7 @@ variable "tracking_server_allowed_cidrs" {
 variable "enable_artifact_bucket" {
   description = "Whether to create a GCS bucket for experiment artifacts."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "artifact_retention_days" {

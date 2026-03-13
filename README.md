@@ -49,6 +49,12 @@ Given compartment centers and an electrode current waveform, the pipeline is:
   - Clinical pulse generators (`monophasic`, `biphasic`, grid sweeps).
 - `response.py::*`
   - Spike detection and latency/feature extraction helpers.
+- `sharding.py::make_device_mesh`, `shard_batch`, `iter_batches`
+  - JAX device mesh utilities for multi-device distribution (replaces deprecated `pmap`).
+- `results_store.py::make_flat_dataset`, `save_zarr`, `load_zarr`, `append_zarr`
+  - xarray Dataset construction + Zarr I/O with incremental writes.
+- `tracker.py::TrackerProtocol`, `NullTracker`, `MLflowTracker`
+  - Backend-agnostic experiment tracking via a `Protocol` + context manager pattern.
 
 ## Worked Example
 
@@ -139,6 +145,6 @@ jaxley-extracellular smoke-integrate
 jaxley-extracellular smoke-tpu  # TPU shell only
 ```
 
-## TPU infra
+## Infrastructure
 
-Infrastructure code for TPU VM lifecycle lives in `infra/tofu/` see [./infra/tofu/README.md](./infra/tofu/README.md) for instructions on provisioning and managing TPU instances.
+Infrastructure code lives in `infra/tofu/` (OpenTofu). See [./infra/tofu/README.md](./infra/tofu/README.md) for provisioning TPU VMs, the experiment tracking server, Cloud SQL, and GCS artifact storage. Lifecycle tasks are in `taskfile.yml`.
