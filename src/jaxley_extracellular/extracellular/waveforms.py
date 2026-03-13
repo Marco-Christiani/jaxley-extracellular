@@ -15,7 +15,72 @@ import jax.numpy as jnp
 from jaxtyping import Array
 
 # ---------------------------------------------------------------------------
-# Elementary pulse shapes
+# Core pulse train generator
+# ---------------------------------------------------------------------------
+
+
+def make_pulse_train(
+    amplitude_uA: float,
+    pulse_width_ms: float,
+    dt_ms: float,
+    T_ms: float,
+    *,
+    frequency_hz: float = 0.0,
+    cathodic: bool = True,
+    biphasic: bool = False,
+    interphase_ms: float = 0.0,
+    delay_ms: float = 0.0,
+) -> Array:
+    """Rectangular pulse train (single pulse when *frequency_hz* is 0).
+
+    Parameters
+    ----------
+    amplitude_uA : float
+        Peak current magnitude (positive value; sign set by *cathodic*).
+    pulse_width_ms : float
+        Duration of each pulse phase in ms.
+    dt_ms : float
+        Simulation timestep in ms.
+    T_ms : float
+        Total waveform duration in ms.
+    frequency_hz : float
+        Pulse repetition frequency.  ``0`` (default) means a single pulse.
+    cathodic : bool
+        If True (default), leading/only phase is cathodic (negative).
+    biphasic : bool
+        If True, each pulse has a charge-balancing second phase.
+    interphase_ms : float
+        Gap between the two phases of a biphasic pulse (default 0).
+    delay_ms : float
+        Time before first pulse onset (default 0).
+
+    Returns
+    -------
+    Array, shape ``(int(T_ms / dt_ms),)``
+    """
+    T = int(T_ms / dt_ms)
+    pw = int(pulse_width_ms / dt_ms)
+    ip = int(interphase_ms / dt_ms)
+    onset = int(delay_ms / dt_ms)
+    sign1 = -1.0 if cathodic else 1.0
+
+    period = int(1000.0 / (frequency_hz * dt_ms)) if frequency_hz > 0.0 else T
+
+    w = jnp.zeros((T,))
+    t = onset
+    while t < T:
+        end1 = min(t + pw, T)
+        w = w.at[t:end1].set(sign1 * amplitude_uA)
+        if biphasic:
+            t2 = t + pw + ip
+            end2 = min(t2 + pw, T)
+            w = w.at[t2:end2].set(-sign1 * amplitude_uA)
+        t += period
+    return w
+
+
+# ---------------------------------------------------------------------------
+# Single-pulse convenience wrappers
 # ---------------------------------------------------------------------------
 
 
@@ -30,30 +95,17 @@ def make_monophasic_pulse(
 ) -> Array:
     """Single-phase rectangular pulse.
 
-    Parameters
-    ----------
-    amplitude_uA : float
-        Peak current magnitude (positive value; sign set by *cathodic*).
-    pulse_width_ms : float
-        Duration of the pulse in ms.
-    dt_ms : float
-        Simulation timestep in ms.
-    T_ms : float
-        Total waveform duration in ms.
-    cathodic : bool
-        If True (default), current is negative (depolarising).
-    delay_ms : float
-        Time before pulse onset (default 0).
-
-    Returns
-    -------
-    Array, shape ``(int(T_ms / dt_ms),)``
+    Thin wrapper around :func:`make_pulse_train` with ``frequency_hz=0``
+    and ``biphasic=False``.
     """
-    T = int(T_ms / dt_ms)
-    sign = -1.0 if cathodic else 1.0
-    onset = int(delay_ms / dt_ms)
-    offset = onset + int(pulse_width_ms / dt_ms)
-    return jnp.zeros((T,)).at[onset:offset].set(sign * amplitude_uA)
+    return make_pulse_train(
+        amplitude_uA,
+        pulse_width_ms,
+        dt_ms,
+        T_ms,
+        cathodic=cathodic,
+        delay_ms=delay_ms,
+    )
 
 
 def make_biphasic_pulse(
@@ -68,37 +120,19 @@ def make_biphasic_pulse(
 ) -> Array:
     """Charge-balanced symmetric biphasic rectangular pulse.
 
-    Parameters
-    ----------
-    amplitude_uA : float
-        Peak current magnitude (positive value).
-    pulse_width_ms : float
-        Duration of *each* phase in ms.
-    dt_ms : float
-        Simulation timestep in ms.
-    T_ms : float
-        Total waveform duration in ms.
-    cathodic_first : bool
-        If True (default), leading phase is cathodic (negative).
-    interphase_ms : float
-        Gap between the two phases (default 0).
-    delay_ms : float
-        Time before first phase onset (default 0).
-
-    Returns
-    -------
-    Array, shape ``(int(T_ms / dt_ms),)``
+    Thin wrapper around :func:`make_pulse_train` with ``frequency_hz=0``
+    and ``biphasic=True``.
     """
-    T = int(T_ms / dt_ms)
-    pw = int(pulse_width_ms / dt_ms)
-    ip = int(interphase_ms / dt_ms)
-    onset = int(delay_ms / dt_ms)
-
-    sign1 = -1.0 if cathodic_first else 1.0
-    w = jnp.zeros((T,))
-    w = w.at[onset : onset + pw].set(sign1 * amplitude_uA)
-    w = w.at[onset + pw + ip : onset + 2 * pw + ip].set(-sign1 * amplitude_uA)
-    return w
+    return make_pulse_train(
+        amplitude_uA,
+        pulse_width_ms,
+        dt_ms,
+        T_ms,
+        cathodic=cathodic_first,
+        biphasic=True,
+        interphase_ms=interphase_ms,
+        delay_ms=delay_ms,
+    )
 
 
 # ---------------------------------------------------------------------------
