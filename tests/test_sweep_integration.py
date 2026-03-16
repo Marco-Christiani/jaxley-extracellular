@@ -108,7 +108,6 @@ class TestTrackerIntegration:
             tracker.log_params({"pw": [0.1, 0.2], "wtype": "mono"})
             tracker.log_metrics({"configs_done": 2.0, "batch_time_s": 1.5}, step=1)
             tracker.set_status("running")
-            tracker.log_artifact_path(Path("/tmp/test.zarr"))
             tracker.log_artifact(Path("/tmp/test.zarr"))
             tracker.set_status("completed")
 

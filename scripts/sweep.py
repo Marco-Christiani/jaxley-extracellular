@@ -8,7 +8,7 @@ Uses three pillars:
 
 Usage:
     python scripts/sweep.py [--outdir results/sweeps] [--tracker mlflow|null]
-                            [--batch-size 64] [--resume path/to.zarr]
+                            [--batch-size 64] [--platform auto|gpu|tpu|cpu]
 """
 
 from __future__ import annotations
@@ -36,10 +36,12 @@ from jaxley_extracellular.extracellular.sharding import (
     make_device_mesh,
     shard_batch,
 )
+from jaxley_extracellular.extracellular.system_monitor import Platform
 from jaxley_extracellular.extracellular.tracker import (
     MLflowTracker,
     NullTracker,
     TrackerProtocol,
+    collect_environment_params,
 )
 
 # -----------------------------------------------------------------------
@@ -205,13 +207,10 @@ def _write_batch(
 def run_sweep(
     outdir: Path,
     tracker: TrackerProtocol,
-    resume_path: Path | None = None,
     batch_size: int = 64,
 ) -> Path:
     """Run the full sweep and return the Zarr output path."""
     zarr_path = outdir / "sweep.zarr"
-    if resume_path is not None:
-        zarr_path = resume_path
 
     # Sweep config for metadata / logging
     sweep_config: dict[str, Any] = {
@@ -263,11 +262,15 @@ def run_sweep(
 
     meta = sweep_metadata(sweep_config)
     configs_done = 0
+    configs_skipped = 0
     batch_idx = 0
     wtype_max_len = max(len(w) for w in WAVEFORM_TYPES)
 
+    sweep_t0 = time.time()
+
     with tracker:
         tracker.log_params(sweep_config)
+        tracker.log_params(collect_environment_params())
         tracker.set_status("running")
 
         for freq_hz in FREQUENCIES_HZ:
@@ -295,6 +298,7 @@ def run_sweep(
                     for wtype in WAVEFORM_TYPES:
                         key = (wtype, float(dist_um), float(radius_um), float(freq_hz))
                         if key in completed:
+                            configs_skipped += N
                             print(f"  SKIP {wtype} dist={dist_um} r={radius_um} f={freq_hz}")
                             continue
 
@@ -350,8 +354,13 @@ def run_sweep(
                             step=batch_idx,
                         )
 
+                        # Per-batch threshold metrics with structured keys
                         for i, pw_ms in enumerate(PULSE_WIDTHS_MS):
                             thr = float(thresholds_np[i])
+                            metric_key = (
+                                f"threshold/{wtype}/d{dist_um:.0f}/r{radius_um:.0f}/pw{pw_ms:.2f}"
+                            )
+                            tracker.log_metrics({metric_key: thr}, step=batch_idx)
                             print(
                                 f"  {wtype:30s}  f={freq_hz:5.0f}Hz  "
                                 f"dist={dist_um:5.0f}  r={radius_um:4.0f}  "
@@ -359,7 +368,17 @@ def run_sweep(
                             )
                         print(f"  [{wtype}] batch: {elapsed:.1f}s for {N} configs\n")
 
-        tracker.log_artifact_path(zarr_path)
+        # Summary metrics
+        total_time = time.time() - sweep_t0
+        tracker.log_metrics(
+            {
+                "summary/total_time_s": total_time,
+                "summary/configs_computed": float(configs_done),
+                "summary/configs_skipped": float(configs_skipped),
+                "summary/total_configs": float(total_configs),
+            }
+        )
+
         tracker.log_artifact(zarr_path)
         tracker.set_status("completed")
 
@@ -383,20 +402,28 @@ def main() -> None:
         help="Tracking server URI (default: http://127.0.0.1:5000)",
     )
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--resume", type=str, default=None, help="Path to existing .zarr to resume")
+    parser.add_argument(
+        "--platform",
+        choices=["auto", "gpu", "tpu", "cpu"],
+        default="auto",
+        help="Platform for system metrics (default: auto-detect)",
+    )
     args = parser.parse_args()
 
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
+    platform: Platform | None = None
+    if args.platform != "auto":
+        platform = Platform[args.platform.upper()]
+
     tracker: TrackerProtocol
     if args.tracker == "mlflow":
-        tracker = MLflowTracker(tracking_uri=args.tracking_uri)
+        tracker = MLflowTracker(tracking_uri=args.tracking_uri, platform=platform)
     else:
         tracker = NullTracker()
 
-    resume_path = Path(args.resume) if args.resume else None
-    run_sweep(outdir, tracker, resume_path=resume_path, batch_size=args.batch_size)
+    run_sweep(outdir, tracker, batch_size=args.batch_size)
 
 
 if __name__ == "__main__":

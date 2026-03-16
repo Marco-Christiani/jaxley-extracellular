@@ -51,10 +51,10 @@ def load_zarr(path: Path) -> xr.Dataset:
     return ds
 
 
-def sweep_metadata(config: dict[str, Any]) -> dict[str, Any]:
-    """Capture git hash, ISO timestamp, and serialised config."""
+def _get_git_hash() -> str:
+    """Return the current git HEAD hash, or ``'unknown'``."""
     try:
-        git_hash = (
+        return (
             subprocess.check_output(
                 ["git", "rev-parse", "HEAD"],
                 stderr=subprocess.DEVNULL,
@@ -63,10 +63,13 @@ def sweep_metadata(config: dict[str, Any]) -> dict[str, Any]:
             .strip()
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
-        git_hash = "unknown"
+        return "unknown"
 
+
+def sweep_metadata(config: dict[str, Any]) -> dict[str, Any]:
+    """Capture git hash, ISO timestamp, and serialised config."""
     return {
-        "git_hash": git_hash,
+        "git_hash": _get_git_hash(),
         "timestamp": datetime.datetime.now(tz=datetime.UTC).isoformat(),
         "config_json": json.dumps(config, default=str),
     }

@@ -7,9 +7,11 @@ import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
+from jaxley_extracellular.extracellular.system_monitor import Platform
 from jaxley_extracellular.extracellular.tracker import (
     MLflowTracker,
     NullTracker,
@@ -36,7 +38,6 @@ class TestNullTracker:
             tracker.log_params({"a": 1})
             tracker.log_metrics({"loss": 0.5}, step=0)
             tracker.set_status("running")
-            tracker.log_artifact_path(Path("/tmp/test"))
             tracker.log_artifact(Path("/tmp/test"))
         # No exception -> success
 
@@ -71,6 +72,7 @@ def mlflow_server(tmp_path_factory: pytest.TempPathFactory) -> Generator[str, No
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        cwd=str(db_dir),
     )
 
     server_uri = f"http://127.0.0.1:{port}"
@@ -98,14 +100,17 @@ def mlflow_server(tmp_path_factory: pytest.TempPathFactory) -> Generator[str, No
 class TestMLflowTracker:
     def test_satisfies_protocol(self) -> None:
         pytest.importorskip("mlflow")
-        t = MLflowTracker()
+        t = MLflowTracker(platform=Platform.CPU)
         assert isinstance(t, TrackerProtocol)
 
     def test_context_manager_starts_and_ends_run(self, mlflow_server: str) -> None:
         import mlflow
 
         t = MLflowTracker(
-            tracking_uri=mlflow_server, experiment_name="test_exp", run_name="test_run"
+            tracking_uri=mlflow_server,
+            experiment_name="test_exp",
+            run_name="test_run",
+            platform=Platform.CPU,
         )
         with t:
             assert t.run_id != ""
@@ -116,7 +121,9 @@ class TestMLflowTracker:
     def test_log_params_retrievable(self, mlflow_server: str) -> None:
         import mlflow
 
-        t = MLflowTracker(tracking_uri=mlflow_server, experiment_name="test_params")
+        t = MLflowTracker(
+            tracking_uri=mlflow_server, experiment_name="test_params", platform=Platform.CPU
+        )
         with t:
             t.log_params({"lr": 0.01, "nested": {"depth": 3}})
             run_id = t.run_id
@@ -129,7 +136,9 @@ class TestMLflowTracker:
     def test_log_metrics(self, mlflow_server: str) -> None:
         import mlflow
 
-        t = MLflowTracker(tracking_uri=mlflow_server, experiment_name="test_metrics")
+        t = MLflowTracker(
+            tracking_uri=mlflow_server, experiment_name="test_metrics", platform=Platform.CPU
+        )
         with t:
             t.log_metrics({"loss": 0.5, "acc": 0.9}, step=1)
             run_id = t.run_id
@@ -138,19 +147,19 @@ class TestMLflowTracker:
         run: Any = client.get_run(run_id)
         assert float(run.data.metrics["loss"]) == pytest.approx(0.5)
 
-    def test_set_status_and_artifact_path(self, mlflow_server: str) -> None:
+    def test_set_status(self, mlflow_server: str) -> None:
         import mlflow
 
-        t = MLflowTracker(tracking_uri=mlflow_server, experiment_name="test_tags")
+        t = MLflowTracker(
+            tracking_uri=mlflow_server, experiment_name="test_tags", platform=Platform.CPU
+        )
         with t:
             t.set_status("running")
-            t.log_artifact_path(Path("/tmp/sweep.zarr"))
             run_id = t.run_id
 
         client = mlflow.MlflowClient(tracking_uri=mlflow_server)
         run: Any = client.get_run(run_id)
         assert run.data.tags["status"] == "running"
-        assert run.data.tags["artifact_path"] == "/tmp/sweep.zarr"
 
     def test_log_artifact_file(self, mlflow_server: str, tmp_path: Path) -> None:
         import mlflow
@@ -158,7 +167,9 @@ class TestMLflowTracker:
         test_file = tmp_path / "metrics.txt"
         test_file.write_text("threshold=42.0\n")
 
-        t = MLflowTracker(tracking_uri=mlflow_server, experiment_name="test_artifact_file")
+        t = MLflowTracker(
+            tracking_uri=mlflow_server, experiment_name="test_artifact_file", platform=Platform.CPU
+        )
         with t:
             t.log_artifact(test_file)
             run_id = t.run_id
@@ -177,7 +188,9 @@ class TestMLflowTracker:
         (zarr_dir / ".zmetadata").write_text("{}")
         (zarr_dir / "data.bin").write_bytes(b"\x00" * 16)
 
-        t = MLflowTracker(tracking_uri=mlflow_server, experiment_name="test_artifact_dir")
+        t = MLflowTracker(
+            tracking_uri=mlflow_server, experiment_name="test_artifact_dir", platform=Platform.CPU
+        )
         with t:
             t.log_artifact(zarr_dir)
             run_id = t.run_id
@@ -186,3 +199,21 @@ class TestMLflowTracker:
         artifacts: Any = client.list_artifacts(run_id)
         names = [a.path for a in artifacts]
         assert "test.zarr" in names
+
+    def test_cpu_does_not_set_system_metrics_flag(self) -> None:
+        """CPU platform passes log_system_metrics=False to start_run."""
+        pytest.importorskip("mlflow")
+        t = MLflowTracker(platform=Platform.CPU)
+        t._mlflow = MagicMock()  # pyright: ignore[reportPrivateUsage]
+        with t:
+            pass
+        assert t._mlflow.start_run.call_args.kwargs.get("log_system_metrics") is False  # pyright: ignore[reportPrivateUsage]
+
+    def test_gpu_sets_system_metrics_flag(self) -> None:
+        """GPU platform passes log_system_metrics=True; no custom monitor needed (tracker handles it)."""
+        pytest.importorskip("mlflow")
+        t = MLflowTracker(platform=Platform.GPU)
+        t._mlflow = MagicMock()  # pyright: ignore[reportPrivateUsage]
+        with t:
+            pass
+        assert t._mlflow.start_run.call_args.kwargs.get("log_system_metrics") is True  # pyright: ignore[reportPrivateUsage]
