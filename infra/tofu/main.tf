@@ -149,13 +149,20 @@ resource "google_compute_firewall" "tracking" {
     ports    = [tostring(var.tracking_server_port)]
   }
 
-  # Internal VPC access (other GCE/TPU instances)
-  source_ranges = concat(
-    ["10.0.0.0/8"],
-    var.tracking_server_allowed_cidrs,
-  )
+  # Internal VPC (TPU workers) + IAP tunnel range
+  source_ranges = ["10.0.0.0/8", "35.235.240.0/20"]
 
   target_tags = ["tracking-server"]
+}
+
+resource "google_iap_tunnel_instance_iam_member" "tracking" {
+  for_each = var.enable_tracking_server ? toset(var.iap_users) : toset([])
+
+  project  = var.project_id
+  zone     = var.zone
+  instance = google_compute_instance.tracking[0].name
+  role     = "roles/iap.tunnelResourceAccessor"
+  member   = each.value
 }
 
 resource "google_compute_instance" "tracking" {
@@ -207,7 +214,7 @@ if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=$UV_BIN sh
 fi
 
-# Install tracking server package
+# Install tracking server
 $UV_BIN/uv tool install '${var.tracking_server_package}'
 
 # Write a launcher that fetches the DB password from Secret Manager at runtime.
@@ -220,10 +227,10 @@ set -euo pipefail
 DB_PASSWORD=$(gcloud secrets versions access latest \
   --secret="${var.name}-tracking-db-password" \
   --project="${var.project_id}")
-exec /root/.local/bin/${var.tracking_server_command} server \
-  --backend-store-uri "postgresql://${var.tracking_db_user}:$DB_PASSWORD@${google_sql_database_instance.tracking[0].public_ip_address}/${var.tracking_db_name}" \
-  --default-artifact-root "gs://${google_storage_bucket.artifacts[0].name}/mlflow" \
-  --host 0.0.0.0 --port ${var.tracking_server_port}
+export DB_URI="postgresql://${var.tracking_db_user}:$DB_PASSWORD@${google_sql_database_instance.tracking[0].public_ip_address}/${var.tracking_db_name}"
+export ARTIFACT_ROOT="gs://${google_storage_bucket.artifacts[0].name}/mlflow"
+export PORT="${var.tracking_server_port}"
+exec /root/.local/bin/${var.tracking_server_command} ${var.tracking_server_args}
 LAUNCHER
 chmod +x /usr/local/bin/tracking-server-start
 
@@ -243,6 +250,10 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+# Disable reverse DNS lookup to avoid 30s SSH latency
+echo "UseDNS no" >> /etc/ssh/sshd_config
+systemctl restart ssh
 
 systemctl daemon-reload
 systemctl enable --now tracking-server
@@ -265,6 +276,7 @@ EOT
 # ---------- TPU ----------
 
 resource "google_tpu_v2_vm" "this" {
+  count    = var.enable_tpu ? 1 : 0
   provider = google-beta
 
   project          = var.project_id

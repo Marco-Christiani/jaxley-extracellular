@@ -3,6 +3,12 @@ variable "project_id" {
   type        = string
 }
 
+variable "enable_tpu" {
+  description = "Whether to create the TPU VM. Set false to provision only the tracking stack."
+  type        = bool
+  default     = true
+}
+
 variable "zone" {
   description = "TPU zone, e.g. us-central2-b."
   type        = string
@@ -126,19 +132,31 @@ variable "tracking_server_port" {
 }
 
 variable "tracking_server_package" {
-  description = "Python package to install for the tracking server (e.g. mlflow, aim)."
+  description = "Python package to install via uv tool install, e.g. 'mlflow[db]>=2.12'."
   type        = string
-  default     = "mlflow>=2.12"
+  default     = "mlflow[db]>=2.12"
 }
 
 variable "tracking_server_command" {
-  description = "Binary name installed by tracking_server_package (e.g. mlflow, aim)."
+  description = "Binary name to invoke, e.g. 'mlflow'."
   type        = string
   default     = "mlflow"
 }
 
-variable "tracking_server_allowed_cidrs" {
-  description = "External CIDRs allowed to reach the tracking server (in addition to VPC internal)."
+variable "tracking_server_args" {
+  description = <<-EOT
+    Arguments passed to tracking_server_command. The launcher exports three
+    environment variables before running the command, which you can reference here:
+      $DB_URI        -- full Postgres connection URI (password injected at runtime)
+      $ARTIFACT_ROOT -- gs://bucket/mlflow
+      $PORT          -- value of tracking_server_port
+  EOT
+  type        = string
+  default     = "server --backend-store-uri $DB_URI --default-artifact-root $ARTIFACT_ROOT --serve-artifacts --host 0.0.0.0 --port $PORT --workers 1"
+}
+
+variable "iap_users" {
+  description = "Google accounts allowed to IAP-tunnel to the tracking server, e.g. [\"user:you@gmail.com\"]."
   type        = list(string)
   default     = []
 }

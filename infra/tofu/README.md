@@ -7,26 +7,53 @@ Declarative infrastructure for the project's compute and experiment tracking res
 ```bash
 gcloud auth login
 gcloud auth application-default login
-gcloud config set project <project-id>
-gcloud auth application-default set-quota-project <project-id>
-gcloud beta billing projects link <project-id> --billing-account <billing-account-id>
-gcloud services enable compute.googleapis.com tpu.googleapis.com --project <project-id>
+```
+
+Pick a project name, a zone, and get a billing account id then set these for convenience while running `gcloud` commands for initial setup:
+
+```bash
+export GCP_PROJECT_ID="..."
+export GCP_BILLING_ACCT_ID="..."
+export GCP_ZONE="..."
+```
+
+Note: After this point, once you have OpenTofu set up and values in sync in `terraform.tfvars` in later step it is better to derive the values to avoid mistakes using commands like `tofu -chdir=infra/tofu output -raw name` shown later.
+
+```bash
+gcloud config set project "$GCP_PROJECT_ID"
+gcloud auth application-default set-quota-project "$GCP_PROJECT_ID"
+gcloud beta billing projects link "$GCP_PROJECT_ID" --billing-account "$GCP_BILLING_ACCT_ID"
+# Make sure we enable access the GCP services we will be using
+gcloud services enable \
+  compute.googleapis.com \
+  tpu.googleapis.com \
+  iap.googleapis.com \
+  secretmanager.googleapis.com \
+  iap.googleapis.com \
+  --project "$GCP_PROJECT_ID"
+gcloud services enable  --project="$GCP_PROJECT_ID"
 ```
 
 ## Resources
 
 All resources are configured in `terraform.tfvars`. Tracking resources are opt-in (disabled by default).
 
-### TPU VM (always created)
+### TPU VM
 
 The core compute resource. Startup script installs `uv`. Discover zone-valid values with:
 
 ```bash
-gcloud compute tpus accelerator-types list --zone <zone> --project <project-id>
-gcloud compute tpus tpu-vm versions list --zone <zone> --project <project-id>
+gcloud compute tpus accelerator-types list --zone <zone> --project "$GCP_PROJECT_ID"
+gcloud compute tpus tpu-vm versions list --zone <zone> --project "$GCP_PROJECT_ID"
 ```
 
-### Experiment tracking (opt-in)
+Opt out (e.g., if you just want the tracking server) by flipping `enable_tpu` in in `terraform.tfvars` and ad-hoc with the CLI:
+
+```bash
+tofu -chdir=infra/tofu apply -var="enable_tpu=false"
+```
+
+### Experiment tracking
 
 Three resources that compose into the tracking stack:
 
@@ -41,7 +68,7 @@ The tracking server depends on both Cloud SQL and GCS (enforced by `lifecycle { 
 
 The DB password never appears in instance metadata or systemd unit files. A launcher script fetches it from Secret Manager at boot, constructs the connection URI in memory, and `exec`s the server binary.
 
-## Straight-line path
+## Stand up cloud infrastructure
 
 1) Configure variables:
 
@@ -49,7 +76,7 @@ The DB password never appears in instance metadata or systemd unit files. A laun
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars` with your project/zone and valid TPU values.
+Edit `terraform.tfvars` with your project-id, billing-account-id, zone, etc that you set up in the prerequisites step (the comments document the settings, jointly with the descriptions in `variables.tf`). Can adjust TPU instance types, image, etc if desired (see comments).
 
 2) Provision:
 
@@ -123,6 +150,8 @@ docker run --rm -it \
 ```
 
 ## Lifecycle
+
+TODO: some tofu output variable names are out of sync
 
 ```bash
 tofu -chdir=infra/tofu apply    # create / update

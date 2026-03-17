@@ -33,10 +33,17 @@ labels = {
 }
 
 # ---------- Experiment tracking ----------
-# DB password: set via environment variable, not here.
+# DB password: set via environment variable or with -var, not here.
 #   export TF_VAR_tracking_db_password="..."
-# Allow external access to tracking UI:
-#   tracking_server_allowed_cidrs = ["YOUR_IP/32"]
+
+# Grant IAP tunnel access to the tracking UI
+#  NOTE: `user` is the IAM member type prefix. GCP IAM members take the form type:identifier:
+#    - user:you@gmail.com - a single Google account
+#    - serviceAccount:name@project.iam.gserviceaccount.com - a service account
+#    - group:team@yourdomain.com - a Google Group
+#    - domain:yourdomain.com - everyone in a Google Workspace domain
+# iap_users = ["user:you@gmail.com"]
+
 # To disable any component:
 #   enable_tracking_db     = false
 #   enable_artifact_bucket = false

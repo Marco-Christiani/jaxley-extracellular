@@ -1,11 +1,11 @@
-output "name" {
-  value       = google_tpu_v2_vm.this.name
+output "tpu_name" {
+  value       = var.enable_tpu ? google_tpu_v2_vm.this[0].name : ""
   description = "TPU VM name"
 }
 
 output "zone" {
-  value       = google_tpu_v2_vm.this.zone
-  description = "TPU VM zone"
+  value       = var.zone
+  description = "Zone"
 }
 
 output "project_id" {
@@ -13,21 +13,21 @@ output "project_id" {
   description = "GCP project id"
 }
 
-output "id" {
-  value       = google_tpu_v2_vm.this.id
+output "tpu_id" {
+  value       = var.enable_tpu ? google_tpu_v2_vm.this[0].id : ""
   description = "Full TPU resource id"
 }
 
-output "network_endpoints" {
-  value       = google_tpu_v2_vm.this.network_endpoints
+output "tpu_network_endpoints" {
+  value       = var.enable_tpu ? google_tpu_v2_vm.this[0].network_endpoints : []
   description = "TPU worker endpoints"
 }
 
 # ---------- Cloud SQL ----------
 
-output "tracking_db_ip" {
+output "tracking_db_internal_ip" {
   value       = var.enable_tracking_db ? google_sql_database_instance.tracking[0].public_ip_address : ""
-  description = "Cloud SQL public IP"
+  description = "Cloud SQL IP (public but VPC-accessible)"
 }
 
 output "tracking_db_uri" {
@@ -40,9 +40,14 @@ output "tracking_db_uri" {
 
 # ---------- Tracking server ----------
 
+output "tracking_server_name" {
+  value       = var.enable_tracking_server ? google_compute_instance.tracking[0].name : ""
+  description = "GCE instance name of the tracking server"
+}
+
 output "tracking_server_internal_ip" {
   value       = var.enable_tracking_server ? google_compute_instance.tracking[0].network_interface[0].network_ip : ""
-  description = "Internal IP of the tracking server (for same-VPC access)"
+  description = "Internal IP of the tracking server (VPC-accessible)"
 }
 
 output "tracking_server_external_ip" {
@@ -50,14 +55,14 @@ output "tracking_server_external_ip" {
   description = "Static external IP of the tracking server"
 }
 
-output "tracking_server_url" {
+output "tracking_server_internal_uri" {
   value       = var.enable_tracking_server ? "http://${google_compute_instance.tracking[0].network_interface[0].network_ip}:${var.tracking_server_port}" : ""
-  description = "Tracking server URL for same-VPC experiments (TPU VMs)"
+  description = "Tracking server URI for same-VPC clients (TPU VMs)"
 }
 
-output "tracking_server_external_url" {
+output "tracking_server_external_uri" {
   value       = var.enable_tracking_server ? "http://${google_compute_address.tracking[0].address}:${var.tracking_server_port}" : ""
-  description = "Tracking server URL for external experiments (local machine)"
+  description = "Tracking server URI for external clients (IAP tunnel endpoint)"
 }
 
 # ---------- GCS artifact bucket ----------
