@@ -1,14 +1,23 @@
 #!/usr/bin/env python
 """ECS parameter sweep: strength-duration curves across geometries and frequencies.
 
-Uses three pillars:
+Key moving parts:
   1. JAX sharding for multi-device distribution
   2. xarray + Zarr for labeled, appendable storage
   3. Tracker protocol for experiment observability
 
-Usage:
-    python scripts/sweep.py [--outdir results/sweeps] [--tracker mlflow|null]
-                            [--batch-size 64] [--platform auto|gpu|tpu|cpu]
+
+Notes:
+When running the remote tracking infrastructure, make sure `--tracking-uri` points to the correct (internal) IP
+ for the tracking server in the VPC (which you can get from `tofu -chdir=infra/tofu output`)
+
+In the case of MLFlow we have `--serve-artifacts` on the server (rather than specifying a specific artifact uri for the client
+ in addition to the tracking uri) so the flow is:
+  -> MLflowTracker.log_artifact(zarr_path)
+    -> HTTP multipart upload to tracking server :5000
+      -> tracking server streams to gs://bucket/mlflow/<run-id>/artifacts/
+The compute instance never touches GCS directly. From the sweep's perspective it's just an HTTP POST to the tracking server URL,
+ same as logging metrics.
 """
 
 from __future__ import annotations

@@ -142,12 +142,12 @@ class MLflowTracker:
     ) -> None:
         import mlflow
 
-        self._mlflow: Any = mlflow
+        self._mlflow = mlflow
         self._experiment_name = experiment_name
         self._tracking_uri = tracking_uri
         self._run_name = run_name
         self._platform_override = platform
-        self._run: Any = None
+        self._run: mlflow.ActiveRun | None = None
         self._monitor: SystemMonitor | None = None
 
     @property
