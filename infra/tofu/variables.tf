@@ -134,7 +134,7 @@ variable "tracking_server_port" {
 variable "tracking_server_package" {
   description = "Python package to install via uv tool install, e.g. 'mlflow[db]>=2.12'."
   type        = string
-  default     = "mlflow[db]>=2.12"
+  default     = "mlflow[extras,db]>=2.12"
 }
 
 variable "tracking_server_command" {
@@ -152,7 +152,7 @@ variable "tracking_server_args" {
       $PORT          -- value of tracking_server_port
   EOT
   type        = string
-  default     = "server --backend-store-uri $DB_URI --default-artifact-root $ARTIFACT_ROOT --serve-artifacts --host 0.0.0.0 --port $PORT --workers 1"
+  default     = "server --backend-store-uri $DB_URI --artifacts-destination $ARTIFACT_ROOT --serve-artifacts --host 0.0.0.0 --port $PORT --workers 1"
 }
 
 variable "iap_users" {
