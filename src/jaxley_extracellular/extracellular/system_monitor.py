@@ -27,6 +27,11 @@ _STOP: None = None
 
 _MetricsItem = tuple[dict[str, float], int] | None
 
+# Need to use forkserver to avoid os.fork() after JAX has started its thread pool.
+# fork() in a multithreaded process risks deadlock. forkserver forks from a
+#  clean single-threaded helper instead.
+_mp = multiprocessing.get_context("forkserver")
+
 
 class MetricsLogger(Protocol):
     """Minimal protocol required by ``TpuMonitor`` to log collected metrics.
@@ -137,7 +142,7 @@ class TpuMonitor(SystemMonitor):
     def __init__(self, tracker: MetricsLogger, poll_interval: float = 1.0) -> None:
         self._tracker = tracker
         self._poll_interval = poll_interval
-        self._queue: multiprocessing.Queue[_MetricsItem] = multiprocessing.Queue()
+        self._queue: multiprocessing.Queue[_MetricsItem] = _mp.Queue()
         self._process: multiprocessing.Process | None = None
         self._drain_thread: threading.Thread | None = None
 
@@ -156,7 +161,7 @@ class TpuMonitor(SystemMonitor):
                 logger.debug("TpuMonitor drain error", exc_info=True)
 
     def start(self) -> None:
-        self._process = multiprocessing.Process(
+        self._process = _mp.Process(
             target=_tpu_polling_loop,
             args=(self._queue, self._poll_interval),
             daemon=True,
