@@ -41,10 +41,11 @@ _voltage_vectorfield: VoltageVectorfield = object.__getattribute__(
 # ---------------------------------------------------------------------------
 
 
-def _make_branch(ncomp: int = 4) -> jx.Branch:
+def _make_branch(ncomp: int = 4, total_length_um: float = 100.0) -> jx.Branch:
     comp = jx.Compartment()
     branch = jx.Branch(comp, ncomp=ncomp)
-    branch.set("length", 100.0)  # um
+    # NB: set("length", x) is per-compartment, not total cable length.
+    branch.set("length", total_length_um / ncomp)  # um
     branch.set("radius", 1.0)  # um
     branch.set("axial_resistivity", 100.0)  # Ohm*cm
     branch.set("capacitance", 1.0)  # uF/cm^2
@@ -52,13 +53,14 @@ def _make_branch(ncomp: int = 4) -> jx.Branch:
     return branch
 
 
-def _make_cell_two_branches() -> jx.Cell:
+def _make_cell_two_branches(comp_length_um: float = 25.0) -> jx.Cell:
     """Simple Y-cell: root branch + one child."""
     comp = jx.Compartment()
     b0 = jx.Branch(comp, ncomp=4)
     b1 = jx.Branch(comp, ncomp=3)
     cell = jx.Cell([b0, b1], parents=[-1, 0])
-    cell.set("length", 100.0)
+    # NB: set("length", x) is per-compartment, not total cable length.
+    cell.set("length", comp_length_um)
     cell.set("radius", 1.0)
     cell.set("axial_resistivity", 100.0)
     cell.set("capacitance", 1.0)
@@ -328,12 +330,15 @@ def test_cable_G_asymmetric_for_nonuniform_radius() -> None:
 
     This proves the symmetry claim is correctly limited to uniform params.
     """
+    total_length_um = 100.0
+    ncomp = 5
     comp = jx.Compartment()
-    branch = jx.Branch(comp, ncomp=5)
-    branch.set("length", 100.0)
+    branch = jx.Branch(comp, ncomp=ncomp)
+    # NB: set("length", x) is per-compartment, not total cable length.
+    branch.set("length", total_length_um / ncomp)
     branch.set("axial_resistivity", 100.0)
     branch.set("capacitance", 1.0)
-    for i in range(5):
+    for i in range(ncomp):
         branch.comp(i).set("radius", float(1.0 + i * 0.5))
     branch.to_jax()
     G = _build_G(branch)

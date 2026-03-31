@@ -46,6 +46,7 @@ def build_voltage_operator_G(module: Any, params: ECSParameters) -> Array:
 
     G_full: Array = jnp.zeros((n_nodes, n_nodes)).at[(rows, cols)].add(vals)
     # Strip branchpoint rows/cols -- identical to Jaxley's build_dense
+    # See jaxley.Module.build_exp_euler_transition_matrix()
     return G_full[jnp.ix_(idx, idx)]  # (Ncomp, Ncomp)
 
 

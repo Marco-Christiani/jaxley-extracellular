@@ -25,10 +25,6 @@ from jaxley_extracellular.extracellular.response import (
 )
 from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
-# ---------------------------------------------------------------------------
-# Model setup (not traced -- runs once)
-# ---------------------------------------------------------------------------
-
 
 class ECSExperiment:
     """Pre-computed static parts of an extracellular stimulation experiment.
@@ -118,7 +114,7 @@ class ECSExperiment:
             data_stimuli=data_stimuli,
             solver="bwd_euler",
         )
-        # mypy treats jx.integrate as Any (untyped third-party API), so cast at boundary.
+        # mypy treats jx.integrate as Any (untyped third-party API)
         return cast(Array, v)  # pyright: ignore[reportUnnecessaryCast]
 
     def simulate_and_extract(
@@ -176,7 +172,7 @@ class ECSExperiment:
             threshold_mV=threshold_mV,
         )
         run_batch = jax.jit(jax.vmap(run_one))
-        # pyright cannot infer vmapped dict outputs precisely; runtime shape is validated by tests.
+        # pyright cannot infer vmapped dict outputs precisely (runtime shape is validated by tests)
         return cast(dict[str, Array], run_batch(waveforms))
 
     # ------------------------------------------------------------------
@@ -225,7 +221,7 @@ class ECSExperiment:
 
         for _ in range(n_iter):
             mid = (lo + hi) / 2.0
-            # pyright widens vmapped return types; cast keeps the binary-search arrays typed.
+            # pyright widens vmapped return types
             spiked: Array = cast(Array, test_amplitude(mid))
             lo = jnp.where(spiked, lo, mid)
             hi = jnp.where(spiked, mid, hi)
@@ -271,7 +267,8 @@ def make_hh_cable_experiment(
     """
     comp = jx.Compartment()
     branch = jx.Branch(comp, ncomp=ncomp)
-    branch.set("length", cable_length_um)
+    # NB: this is per-compartment, not total cable length
+    branch.set("length", cable_length_um / ncomp)
     branch.set("radius", radius_um)
     branch.set("axial_resistivity", axial_resistivity)
     branch.set("capacitance", 1.0)
@@ -281,6 +278,8 @@ def make_hh_cable_experiment(
     for i in range(ncomp):
         branch.comp(i).record(verbose=False)
 
+    # uses compute_xyz() which reads nodes["length"] and sets xyzr to match,
+    #  then interpolates compartment centers
     ensure_compartment_centers(branch)
     comp_xyz = get_compartment_xyz(branch)
 

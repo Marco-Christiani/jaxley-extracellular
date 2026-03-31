@@ -33,7 +33,7 @@ def ensure_compartment_centers(module: Any) -> None:
     has_valid = cols_present and not nodes[["x", "y", "z"]].isna().any(axis=None)
 
     if not has_valid:
-        # xyzr is a list of (n_traced_pts, 4) arrays; column 3 is radius.
+        # xyzr is a list of (n_traced_pts, 4) arrays and column 3 is radius
         raw_xyz = module.xyzr[0][:, :3]
         if np.isnan(raw_xyz).any():
             module.compute_xyz()
@@ -43,8 +43,8 @@ def ensure_compartment_centers(module: Any) -> None:
 def get_compartment_xyz(module: Any) -> np.ndarray:
     """Return (Ncomp, 3) compartment-centre coordinates in um.
 
-    Raises if coordinates have not yet been populated; call
-    ``ensure_compartment_centers`` first.
+    Raises if coordinates have not yet been populated, make sure to
+     call ``ensure_compartment_centers`` first.
 
     Args:
         module: Top-level Jaxley module.

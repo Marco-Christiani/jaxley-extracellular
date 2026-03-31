@@ -33,10 +33,11 @@ T_MAX = 2.0  # ms -- short run to keep tests fast
 N_STEPS = int(T_MAX / DT)
 
 
-def _make_recorded_branch(ncomp: int = 4) -> jx.Branch:
+def _make_recorded_branch(ncomp: int = 4, total_length_um: float = 100.0) -> jx.Branch:
     comp = jx.Compartment()
     branch = jx.Branch(comp, ncomp=ncomp)
-    branch.set("length", 100.0)
+    # NB: set("length", x) is per-compartment, not total cable length.
+    branch.set("length", total_length_um / ncomp)
     branch.set("radius", 1.0)
     branch.set("axial_resistivity", 100.0)
     branch.set("capacitance", 1.0)

@@ -32,8 +32,8 @@ def point_source_potential(
 
     Args:
         comp_xyz: (Ncomp, 3) compartment-centre coordinates in um.  Typically a
-                  static numpy array from ``get_compartment_xyz``; will be
-                  promoted to a JAX constant automatically.
+                  static numpy array from ``get_compartment_xyz``, will be
+                  promoted to a JAX constant automatically as-needed.
         electrode_pos: (3,) electrode position in um.  Pass a ``jnp.array`` to
                        differentiate w.r.t. electrode placement.
         electrode_current: (T,) electrode current samples in uA.  Pass a JAX
