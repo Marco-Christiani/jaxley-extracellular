@@ -44,7 +44,7 @@ def tiny_zarr(tmp_path_factory: pytest.TempPathFactory) -> Path:
     t_idx = jnp.arange(T)
 
     def factory(amplitude: Any, pw_steps: Any, t_idx: Any) -> Any:
-        return jnp.where(t_idx < pw_steps, -amplitude, 0.0)
+        return jnp.where(t_idx < pw_steps, -amplitude, 0.0)[jnp.newaxis, :]
 
     N = len(pw_ms_list)
     lo = jnp.full(N, 0.0, dtype=jnp.float32)

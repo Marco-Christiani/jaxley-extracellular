@@ -93,14 +93,15 @@ def _make_mono_cathodic(
     amplitude: jax.Array, pw_steps: jax.Array, period_steps: jax.Array, t_idx: jax.Array
 ) -> jax.Array:
     phase = t_idx % period_steps
-    return jnp.where(phase < pw_steps, -amplitude, 0.0)
+    # (1, T) - single electrode
+    return jnp.where(phase < pw_steps, -amplitude, 0.0)[jnp.newaxis, :]
 
 
 def _make_mono_anodic(
     amplitude: jax.Array, pw_steps: jax.Array, period_steps: jax.Array, t_idx: jax.Array
 ) -> jax.Array:
     phase = t_idx % period_steps
-    return jnp.where(phase < pw_steps, amplitude, 0.0)
+    return jnp.where(phase < pw_steps, amplitude, 0.0)[jnp.newaxis, :]
 
 
 def _make_biphasic_cathodic_first(
@@ -112,7 +113,7 @@ def _make_biphasic_cathodic_first(
     phase = t_idx % period_steps
     cathodic = jnp.where(phase < pw_steps, -amplitude, 0.0)
     anodic = jnp.where((phase >= pw_steps) & (phase < 2 * pw_steps), amplitude, 0.0)
-    return cathodic + anodic
+    return (cathodic + anodic)[jnp.newaxis, :]
 
 
 WAVEFORM_FACTORIES: dict[str, WaveformFactory] = {

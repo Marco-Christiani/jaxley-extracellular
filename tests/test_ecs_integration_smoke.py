@@ -140,11 +140,11 @@ def test_point_source_potential_units() -> None:
     Expected: phi_e = 1e3 / (4 pi * 0.3 * 100) ~= 2.653 mV
     """
     comp_xyz = np.array([[100.0, 0.0, 0.0]])  # 100 um away
-    electrode_pos = np.array([0.0, 0.0, 0.0])
-    electrode_current = jnp.ones((1,))  # 1 uA, T=1 step
+    electrode_positions = np.array([[0.0, 0.0, 0.0]])
+    electrode_currents = jnp.ones((1, 1))  # 1 uA, 1 electrode, T=1 step
     sigma = 0.3  # S/m
 
-    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
+    phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma)
     expected = 1e3 / (4.0 * np.pi * 0.3 * 100.0)
 
     assert phi_e.shape == (1, 1)
@@ -155,18 +155,18 @@ def test_point_source_potential_shape() -> None:
     Ncomp = 5
     T = 20
     comp_xyz = np.random.default_rng(0).uniform(size=(Ncomp, 3)) * 200.0
-    electrode_pos = np.array([500.0, 0.0, 0.0])  # far away
-    electrode_current = jnp.ones((T,))
-    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma=0.3)
+    electrode_positions = np.array([[500.0, 0.0, 0.0]])  # far away
+    electrode_currents = jnp.ones((1, T))
+    phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma=0.3)
     assert phi_e.shape == (Ncomp, T)
 
 
 def test_point_source_potential_farther_smaller() -> None:
     """Farther compartments must see smaller phi_e."""
     comp_xyz = np.array([[50.0, 0.0, 0.0], [200.0, 0.0, 0.0]])
-    electrode_pos = np.array([0.0, 0.0, 0.0])
-    electrode_current = jnp.ones((1,))
-    phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma=0.3)
+    electrode_positions = np.array([[0.0, 0.0, 0.0]])
+    electrode_currents = jnp.ones((1, 1))
+    phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma=0.3)
     assert float(phi_e[0, 0]) > float(phi_e[1, 0])
 
 
@@ -186,11 +186,11 @@ def test_full_pipeline_cable() -> None:
     assert comp_xyz.shape == (ncomp, 3), f"Expected ({ncomp},3), got {comp_xyz.shape}"
 
     # Electrode sitting above the midpoint of the cable.
-    electrode_pos = np.array([50.0, 50.0, 0.0])  # um
+    electrode_positions = np.array([[50.0, 50.0, 0.0]])  # um
     T = N_STEPS
-    waveform = jnp.zeros((T,)).at[10:50].set(1.0)  # rectangular 1 uA pulse
+    waveform = jnp.zeros((1, T)).at[0, 10:50].set(1.0)  # rectangular 1 uA pulse, 1 electrode
 
-    phi_e = point_source_potential(comp_xyz, electrode_pos, waveform, sigma=0.3)
+    phi_e = point_source_potential(comp_xyz, electrode_positions, waveform, sigma=0.3)
     assert phi_e.shape == (ncomp, T)
 
     i_ecs = build_ecs_stimuli_nA(branch, phi_e)

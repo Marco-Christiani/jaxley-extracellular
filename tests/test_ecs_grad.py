@@ -3,7 +3,7 @@
 Confirms that jax.grad flows through every differentiable parameter:
 
 1. electrode_current waveform  -- through point_source_potential + phi_e_to_ecs_nA
-2. electrode_pos               -- through point_source_potential
+2. electrode_positions         -- through point_source_potential
 3. sigma                       -- through point_source_potential
 4. Full end-to-end             -- amplitude scalar -> phi_e -> i_ecs -> jx.integrate
 """
@@ -73,12 +73,14 @@ def test_grad_wrt_current_waveform() -> None:
     branch = _make_branch(ncomp=4)
     comp_xyz, G, cm, area = _static_ecs_parts(branch)
 
-    electrode_pos = jnp.array([50.0, 50.0, 0.0])  # static position
+    electrode_positions = jnp.array([[50.0, 50.0, 0.0]])  # single electrode
     sigma = 0.3
     T = 10
 
     def loss(electrode_current: jax.Array) -> jax.Array:
-        phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
+        phi_e = point_source_potential(
+            comp_xyz, electrode_positions, electrode_current[jnp.newaxis, :], sigma
+        )
         i_ecs = phi_e_to_ecs_nA(phi_e, G, cm, area)
         # Use i_ecs[0] rather than i_ecs.sum(): the symmetric electrode position
         # makes sum(G @ phi_e) = 0 exactly (row sums of G are zero and the spatial
@@ -98,45 +100,45 @@ def test_grad_wrt_current_waveform() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_grad_wrt_electrode_pos() -> None:
-    """jax.grad flows through point_source_potential w.r.t. electrode_pos."""
+def test_grad_wrt_electrode_positions() -> None:
+    """jax.grad flows through point_source_potential w.r.t. electrode_positions."""
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
-    electrode_current = jnp.ones((5,))
+    electrode_currents = jnp.ones((1, 5))
     sigma = 0.3
 
-    def loss(electrode_pos: jax.Array) -> jax.Array:
-        phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
+    def loss(electrode_positions: jax.Array) -> jax.Array:
+        phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma)
         return phi_e.sum()
 
-    electrode_pos = jnp.array([50.0, 50.0, 0.0])
-    grad = cast(jax.Array, jax.grad(loss)(electrode_pos))
+    electrode_positions = jnp.array([[50.0, 50.0, 0.0]])
+    grad = cast(jax.Array, jax.grad(loss)(electrode_positions))
 
-    assert grad.shape == (3,), f"Expected (3,), got {grad.shape}"
+    assert grad.shape == (1, 3), f"Expected (1, 3), got {grad.shape}"
     assert jnp.all(jnp.isfinite(grad)), "Gradient contains non-finite values"
     assert jnp.any(grad != 0.0), "Gradient is unexpectedly all-zero"
 
 
-def test_grad_electrode_pos_points_away_from_cell() -> None:
+def test_grad_electrode_positions_points_away_from_cell() -> None:
     """Moving the electrode away should reduce phi_e -- check sign via grad."""
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
-    electrode_current = jnp.ones((1,))
+    electrode_currents = jnp.ones((1, 1))
     sigma = 0.3
 
-    def total_phi_e(electrode_pos: jax.Array) -> jax.Array:
-        phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
+    def total_phi_e(electrode_positions: jax.Array) -> jax.Array:
+        phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma)
         return phi_e.sum()
 
     # Electrode directly above the cable midpoint.
     # Moving it along +y increases distance to all compartments -> phi_e decreases.
-    pos = jnp.array([50.0, 100.0, 0.0])
+    pos = jnp.array([[50.0, 100.0, 0.0]])
     grad = cast(jax.Array, jax.grad(total_phi_e)(pos))
 
     # d(phi_e)/d(y) should be negative (moving away reduces potential)
-    assert float(grad[1]) < 0.0, f"Expected negative y-gradient, got {float(grad[1])}"
+    assert float(grad[0, 1]) < 0.0, f"Expected negative y-gradient, got {float(grad[0, 1])}"
 
 
 # ---------------------------------------------------------------------------
@@ -149,11 +151,11 @@ def test_grad_wrt_sigma() -> None:
     branch = _make_branch(ncomp=4)
     comp_xyz, _G, _cm, _area = _static_ecs_parts(branch)
 
-    electrode_pos = jnp.array([50.0, 50.0, 0.0])
-    electrode_current = jnp.ones((5,))
+    electrode_positions = jnp.array([[50.0, 50.0, 0.0]])
+    electrode_currents = jnp.ones((1, 5))
 
     def loss(sigma: jax.Array) -> jax.Array:
-        phi_e = point_source_potential(comp_xyz, electrode_pos, electrode_current, sigma)
+        phi_e = point_source_potential(comp_xyz, electrode_positions, electrode_currents, sigma)
         return phi_e.sum()
 
     grad = cast(jax.Array, jax.grad(loss)(jnp.array(0.3)))
@@ -184,13 +186,13 @@ def test_grad_through_integrate_wrt_amplitude() -> None:
 
     comp_xyz, G, cm, area = _static_ecs_parts(branch)
 
-    electrode_pos = jnp.array([50.0, 50.0, 0.0])
+    electrode_positions = jnp.array([[50.0, 50.0, 0.0]])
     sigma = 0.3
     T = N_STEPS
 
     def loss(amplitude: jax.Array) -> jax.Array:
-        waveform = amplitude * jnp.ones((T,))
-        phi_e = point_source_potential(comp_xyz, electrode_pos, waveform, sigma)
+        waveform = amplitude * jnp.ones((1, T))  # (1, T) single electrode
+        phi_e = point_source_potential(comp_xyz, electrode_positions, waveform, sigma)
         i_ecs = phi_e_to_ecs_nA(phi_e, G, cm, area)
         data_stimuli = branch.data_stimulate(i_ecs)
         v = jx.integrate(

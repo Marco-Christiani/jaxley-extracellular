@@ -34,6 +34,7 @@ class ECSExperiment:
     module : jx.Module
         Jaxley module (Branch/Cell/Network), already ``.to_jax()``-ed.
     comp_xyz : Array, (Ncomp, 3)
+    electrode_positions : Array, (N_elec, 3)
     G : Array, (Ncomp, Ncomp)
     cm, area : Array, (Ncomp,)
     dt_ms, T_ms : float
@@ -44,7 +45,7 @@ class ECSExperiment:
     def __init__(
         self,
         module: Any,
-        electrode_pos: Array,
+        electrode_positions: Array,
         sigma: float = 0.3,
         dt_ms: float = 0.025,
         T_ms: float = 5.0,
@@ -56,8 +57,8 @@ class ECSExperiment:
         module : jx.Module
             Jaxley module with channels inserted and states initialised.
             Will be ``.to_jax()``-ed internally.
-        electrode_pos : Array, shape ``(3,)``
-            Electrode xyz in um.
+        electrode_positions : Array, shape ``(N_elec, 3)``
+            Electrode xyz positions in um.
         sigma : float
             Extracellular conductivity in S/m (default 0.3, typical cortex).
         dt_ms : float
@@ -67,7 +68,7 @@ class ECSExperiment:
         """
         ensure_compartment_centers(module)
         self.comp_xyz = jnp.asarray(get_compartment_xyz(module))
-        self.electrode_pos = jnp.asarray(electrode_pos)
+        self.electrode_positions = jnp.asarray(electrode_positions)
         self.sigma = sigma
         self.dt_ms = dt_ms
         self.T_ms = T_ms
@@ -86,26 +87,26 @@ class ECSExperiment:
     # Single simulation (traced)
     # ------------------------------------------------------------------
 
-    def simulate_waveform(self, waveform: Array) -> Array:
+    def simulate_waveform(self, waveforms: Array) -> Array:
         """Run one ECS simulation and return voltage traces.
 
         Parameters
         ----------
-        waveform : Array, shape ``(T,)``
-            Electrode current in uA.
+        waveforms : Array, shape ``(N_elec, T)``
+            Per-electrode current waveforms in uA.
 
         Returns
         -------
         v : Array, shape ``(Ncomp, T+1)``
             Voltage at every compartment over time.
         """
-        phi_e = point_source_potential(
-            self.comp_xyz,
-            self.electrode_pos,
-            waveform,
-            self.sigma,
+        phi_e = point_source_potential(  # (Ncomp, T) [mV]
+            self.comp_xyz,           # (Ncomp, 3) [um]
+            self.electrode_positions,  # (N_elec, 3) [um]
+            waveforms,               # (N_elec, T) [uA]
+            self.sigma,              # [S/m]
         )
-        i_ecs = phi_e_to_ecs_nA(phi_e, self.G, self.cm, self.area)
+        i_ecs = phi_e_to_ecs_nA(phi_e, self.G, self.cm, self.area)  # (Ncomp, T) [nA]
         data_stimuli = self.module.data_stimulate(i_ecs)
         v = jx.integrate(
             self.module,
@@ -119,7 +120,7 @@ class ECSExperiment:
 
     def simulate_and_extract(
         self,
-        waveform: Array,
+        waveforms: Array,
         record_comp: int = 0,
         threshold_mV: float = 0.0,
     ) -> dict[str, Array]:
@@ -127,7 +128,7 @@ class ECSExperiment:
 
         Parameters
         ----------
-        waveform : Array, shape ``(T,)``
+        waveforms : Array, shape ``(N_elec, T)``
         record_comp : int
             Which compartment to extract features from.
         threshold_mV : float
@@ -136,7 +137,7 @@ class ECSExperiment:
         -------
         dict with keys: spiked, latency_ms, vmax, vmin
         """
-        v = self.simulate_waveform(waveform)
+        v = self.simulate_waveform(waveforms)
         return extract_response_features(
             v[record_comp],
             self.dt_ms,
@@ -157,7 +158,7 @@ class ECSExperiment:
 
         Parameters
         ----------
-        waveforms : Array, shape ``(B, T)``
+        waveforms : Array, shape ``(B, N_elec, T)``
         record_comp : int
         threshold_mV : float
 
@@ -193,9 +194,9 @@ class ECSExperiment:
         Parameters
         ----------
         make_waveform_fn : callable
-            ``(amplitude: float) -> Array of shape (T,)``.  Must be
+            ``(amplitude: float) -> Array of shape (N_elec, T)``.  Must be
             jit/vmap-compatible.  Receives a scalar amplitude and returns
-            the full waveform.
+            the full per-electrode waveforms.
         amp_lo, amp_hi : Array, shape ``(N,)``
             Initial lower and upper brackets per configuration.
             ``amp_lo`` should be sub-threshold, ``amp_hi`` supra-threshold.
@@ -239,13 +240,13 @@ def make_hh_cable_experiment(
     cable_length_um: float = 1250.0,
     radius_um: float = 10.0,
     axial_resistivity: float = 100.0,
-    electrode_pos: tuple[float, float, float] | None = None,
+    electrode_positions: np.ndarray | None = None,
     electrode_distance_um: float = 50.0,
     sigma: float = 0.3,
     dt_ms: float = 0.025,
     T_ms: float = 5.0,
 ) -> ECSExperiment:
-    """Build a standard HH cable with electrode above one end.
+    """Build a standard HH cable with electrode(s).
 
     Parameters
     ----------
@@ -253,10 +254,11 @@ def make_hh_cable_experiment(
     cable_length_um : float
     radius_um : float
     axial_resistivity : float
-    electrode_pos : tuple or None
-        If None, electrode placed perpendicular above the first compartment.
+    electrode_positions : ndarray, shape ``(N_elec, 3)``, or None
+        If None, a single electrode is placed perpendicular above the first
+        compartment at ``electrode_distance_um``.
     electrode_distance_um : float
-        Only used when *electrode_pos* is None.
+        Only used when *electrode_positions* is None.
     sigma : float
     dt_ms : float
     T_ms : float
@@ -283,17 +285,17 @@ def make_hh_cable_experiment(
     ensure_compartment_centers(branch)
     comp_xyz = get_compartment_xyz(branch)
 
-    if electrode_pos is None:
-        electrode_pos = (
+    if electrode_positions is None:
+        electrode_positions = np.array([[
             float(comp_xyz[0, 0]),
             electrode_distance_um,
             0.0,
-        )
-    electrode_pos_arr = jnp.array(electrode_pos)
+        ]])
+    positions_arr = jnp.array(electrode_positions)
 
     return ECSExperiment(
         branch,
-        electrode_pos_arr,
+        positions_arr,
         sigma,
         dt_ms,
         T_ms,
