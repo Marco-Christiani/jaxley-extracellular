@@ -2,6 +2,9 @@
 
 Declarative infrastructure for the project's compute and experiment tracking resources.
 
+![](./architecture.png)
+[.](https://drive.google.com/file/d/1HJ0upOq1ylFv9MbKDORxLFUhm7Ge3K_L/view?usp=sharing)
+
 ## Prerequisites
 
 ```bash
