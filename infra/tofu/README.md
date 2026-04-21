@@ -4,6 +4,7 @@ Declarative infrastructure for the project's compute and experiment tracking res
 
 ![](./architecture.png)
 [.](https://drive.google.com/file/d/1HJ0upOq1ylFv9MbKDORxLFUhm7Ge3K_L/view?usp=sharing)
+[concat](ddai-project-1.pdf)
 
 ## Prerequisites
 
