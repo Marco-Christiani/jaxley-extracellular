@@ -48,7 +48,7 @@ def smoke_integrate() -> None:
 
 
 def smoke_tpu() -> None:
-    # jax.devices() is untyped in stubs; cast to a minimal protocol we actually use.
+    # jax.devices() is untyped in stubs. Cast to a minimal protocol we actually use.
     devices = cast(list[_DeviceLike], list(jax.devices()))
     print("jax", jax.__version__)
     print("default_backend", jax.default_backend())

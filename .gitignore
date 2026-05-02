@@ -212,6 +212,8 @@ __marimo__/
 !.terraform.lock.hcl
 !infra/tofu/.terraform.lock.hcl
 *.local.*
+/*.local/
+!.rayignore
 .direnv/
 /result
 
@@ -228,3 +230,15 @@ results
 *.zarr
 mlruns/
 mlartifacts/
+
+# LaTeX build artefacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.pdf
+paper/*.synctex.gz
+

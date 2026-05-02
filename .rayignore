@@ -1,0 +1,60 @@
+# .rayignore -- files and directories excluded from Ray working_dir uploads.
+# gitignore-style syntax.
+#
+# Keep these:
+#   src/jaxley_extracellular/    <-- includes bbp/data/*.swc (REQUIRED)
+#   scripts/                     <-- includes fit_bbp_multiparam.py
+#   pyproject.toml
+#
+# Everything below is either large, irrelevant to the remote task, or
+# machine-specific.
+
+# Large artifact directories (~269M combined on a clean checkout)
+reference/
+results/
+*.local/
+
+# Infrastructure that doesn't run remotely
+infra/
+
+# VCS + CI + build
+.git/
+.github/
+build/
+dist/
+*.egg-info/
+# uv.lock
+
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# Editor / env / secrets
+.env
+.envrc
+.vscode/
+.idea/
+
+# Python caches / bytecode
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Jupyter / lab
+.ipynb_checkpoints/
+
+# Tests are not required to run the fit
+tests/
+
+# Local-only / scratch
+*.local.md
+*.local.py
+docs/
+!experiments/
+*.tar.gz

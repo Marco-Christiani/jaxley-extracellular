@@ -5,7 +5,7 @@ version: "3"
 vars:
   # Local Postgres settings
   PGDATA: results/pgdata
-  PGPORT: "5432"
+  PGPORT: "15432"
   PGDATABASE: tracking
   PGUSER: tracker
   PGPASSWORD: dev
@@ -16,6 +16,21 @@ vars:
   TOFU: tofu -chdir=infra/tofu
   # Tracking server port (must match tracking_server_port in variables.tf)
   TRACKING_PORT: "5000"
+  # Ray client server port (must match --ray-client-server-port on the TPU)
+  RAY_CLIENT_PORT: "10001"
+  # Ray dashboard port on the TPU head
+  RAY_DASHBOARD_PORT: "8265"
+  # Ray metrics export port on the TPU head
+  RAY_METRICS_EXPORT_PORT: "8080"
+  # Grafana and Prometheus ports on the TPU head
+  GRAFANA_PORT: "3000"
+  PROMETHEUS_PORT: "9090"
+  LOCAL_TRACKING_PORT: "45137"
+  LOCAL_RAY_CLIENT_PORT: "46101"
+  LOCAL_RAY_DASHBOARD_PORT: "48265"
+  LOCAL_GRAFANA_PORT: "43000"
+  LOCAL_PROMETHEUS_PORT: "49090"
+  LOCAL_MLFLOW_DEV_PORT: "45500"
 
 tasks:
   # ---------- Infrastructure (OpenTofu) ----------
@@ -76,6 +91,142 @@ tasks:
     cmds:
       - sh -lc 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "mkdir -p ~/jaxley-extracellular && tar -xf - -C ~/jaxley-extracellular"'
 
+  remote:tpu:bootstrap:nix:
+    desc: One-shot Nix install on the TPU VM (handles libtcmalloc/LD_PRELOAD conflict). Idempotent.
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "bash ~/jaxley-extracellular/infra/scripts/tpu-bootstrap-nix.sh"
+
+  remote:tpu:ray:head:start:
+    desc: Start (or restart) the systemd-managed Ray head. Idempotent.
+    preconditions:
+      - sh: gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "test -x ~/jx-tpu-env/bin/ray-head-start"
+        msg: "Bundle missing ~/jx-tpu-env/bin/ray-head-start. Run `task remote:tpu:nix:push` first."
+      - sh: gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "test -f /etc/systemd/system/ray-head.service"
+        msg: "ray-head.service unit missing. Run `task remote:tpu:bootstrap:nix` first."
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "sudo systemctl restart ray-head && systemctl is-active ray-head"
+
+  remote:tpu:ray:head:status:
+    desc: Show Ray head status (systemd unit + ray status + dashboard probes).
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "echo '--- systemd ---' && systemctl is-active ray-head && echo '--- ray ---' && ~/jx-tpu-env/bin/ray status && echo '--- dashboard ---' && curl -fsS http://127.0.0.1:{{.RAY_DASHBOARD_PORT}}/api/grafana_health 2>/dev/null || true; echo; curl -fsS http://127.0.0.1:{{.RAY_DASHBOARD_PORT}}/api/prometheus_health 2>/dev/null || true; echo"
+
+  remote:tpu:ray:head:logs:
+    desc: Tail the ray-head journal on the TPU.
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "sudo journalctl -u ray-head -n 200 -f"
+
+  remote:tpu:job:status:
+    desc: Status of the most recently submitted ray job (or pass --id JOB_ID).
+    cmds:
+      - python scripts/ray_fit_launcher.py --dashboard-url http://127.0.0.1:{{.LOCAL_RAY_DASHBOARD_PORT}} --last
+
+  remote:tpu:job:logs:
+    desc: Print the full job log of the most recently submitted ray job. Pass JOB_ID as CLI arg or rely on .task/last_ray_job.json.
+    cmds:
+      - |
+        JOB_ID="$(jq -r .job_id .task/last_ray_job.json)"
+        python scripts/ray_fit_launcher.py --dashboard-url http://127.0.0.1:{{.LOCAL_RAY_DASHBOARD_PORT}} --logs "$JOB_ID"
+
+  remote:tpu:job:retrieve:
+    desc: Pull the most recently submitted ray job's npz back via MLflow.
+    cmds:
+      - |
+        JOB_ID="$(jq -r .job_id .task/last_ray_job.json)"
+        python scripts/ray_fit_launcher.py --dashboard-url http://127.0.0.1:{{.LOCAL_RAY_DASHBOARD_PORT}} --retrieve "$JOB_ID"
+
+  remote:tpu:observability:bootstrap:
+    desc: Install and configure Grafana + Prometheus on the TPU VM for Ray metrics
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "cd ~/jaxley-extracellular && bash infra/scripts/ray-observability-bootstrap.sh"
+
+  remote:tpu:observability:refresh:
+    desc: Refresh Ray Grafana dashboards from the current Ray session path
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "sudo /usr/local/bin/ray-refresh-grafana-dashboards && sudo systemctl restart grafana-server"
+
+  remote:tpu:nix:push:
+    desc: Build TPU worker bundle locally, push closure to the TPU's nix store, atomically swap ~/jx-tpu-env. Required when uv.lock or flake.lock changes.
+    cmds:
+      - mkdir -p .task
+      - nix build .#tpu --out-link .task/tpu-result
+      - |
+        set -euo pipefail
+        TPU_NAME="$({{.TOFU}} output -raw tpu_name)"
+        TPU_ZONE="$({{.TOFU}} output -raw zone)"
+        TPU_IP="$(gcloud compute tpus tpu-vm describe "$TPU_NAME" --zone "$TPU_ZONE" --format='value(networkEndpoints[0].accessConfig.externalIp)')"
+        STORE_PATH="$(readlink -f .task/tpu-result)"
+        echo "[push] tpu=$TPU_NAME ip=$TPU_IP"
+        echo "[push] closure=$STORE_PATH"
+        gcloud compute tpus tpu-vm ssh "$TPU_NAME" --zone "$TPU_ZONE" --command "true"
+        NIX_SSHOPTS="-i $HOME/.ssh/google_compute_engine -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+          nix copy --no-check-sigs --to "ssh-ng://$USER@$TPU_IP" "$STORE_PATH"
+        # Atomic swap, then verify by exercising the bundle's bin/ray-head-start.
+        gcloud compute tpus tpu-vm ssh "$TPU_NAME" --zone "$TPU_ZONE" --command "
+          set -euo pipefail
+          ln -sfn $STORE_PATH ~/jx-tpu-env.new
+          mv -Tf ~/jx-tpu-env.new ~/jx-tpu-env
+          test -x ~/jx-tpu-env/bin/ray-head-start
+          test -x ~/jx-tpu-env/bin/python
+          test -e ~/jx-tpu-env/lib/libtcmalloc.so
+          echo \"[push] swapped: \$(readlink ~/jx-tpu-env)\"
+        "
+
+  remote:tpu:doctor:
+    desc: Probe every layer (bundle, ray-head unit, ray, observability, mlflow, tunnels). One SSH round-trip.
+    cmds:
+      - |
+        TRACKING_URI="$({{.TOFU}} output -raw tracking_server_internal_uri 2>/dev/null)"
+        TRACKING_URI="${TRACKING_URI:-http://localhost:5000}"
+        gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "
+          echo '=== bundle  : '\$(readlink ~/jx-tpu-env 2>/dev/null || echo MISSING)
+          echo '=== ray-head: '\$(systemctl is-active ray-head 2>/dev/null || echo INACTIVE)
+          echo '=== ray     : '\$(~/jx-tpu-env/bin/ray status 2>&1 | grep -E 'TPU|Total Usage' | head -n 3 | tr '\n' ' ' || echo UNREACHABLE)
+          echo '=== prom    : '\$(systemctl is-active prometheus 2>/dev/null || echo INACTIVE)
+          echo '=== grafana : '\$(systemctl is-active grafana-server 2>/dev/null || echo INACTIVE)
+          echo '=== mlflow  : '\$(curl -fsS -o /dev/null -w 'HTTP %{http_code}' --max-time 5 ${TRACKING_URI}/health 2>&1 || echo UNREACHABLE)
+        "
+      - |
+        local_ports="$(ss -lnt 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ' ')"
+        for p in {{.LOCAL_RAY_CLIENT_PORT}} {{.LOCAL_RAY_DASHBOARD_PORT}} {{.LOCAL_TRACKING_PORT}}; do
+          if echo "$local_ports" | grep -qw "$p"; then
+            echo "=== tunnel  :$p LISTENING"
+          else
+            echo "=== tunnel  :$p NOT LISTENING (run task remote:tunnels:up)"
+          fi
+        done
+
+  remote:tpu:ray:head:stop:
+    desc: Stop the systemd-managed Ray head.
+    cmds:
+      - gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" --zone "$({{.TOFU}} output -raw zone)" --command "sudo systemctl stop ray-head"
+
+  remote:tpu:tunnels:bg:
+    desc: Open all TPU-side tunnels (ray client + dashboard + grafana + prometheus) over a single SSH connection in the background.
+    cmds:
+      - mkdir -p .task/pids .task/logs
+      - |
+        if [ -f .task/pids/tpu-tunnels.pid ] && kill -0 "$(cat .task/pids/tpu-tunnels.pid)" 2>/dev/null; then
+          echo "TPU tunnels already running"
+          exit 0
+        fi
+      - |
+        sh -c '
+          nohup gcloud compute tpus tpu-vm ssh "$({{.TOFU}} output -raw tpu_name)" \
+            --zone "$({{.TOFU}} output -raw zone)" \
+            -- -N -o Compression=no \
+               -L {{.LOCAL_RAY_CLIENT_PORT}}:localhost:{{.RAY_CLIENT_PORT}} \
+               -L {{.LOCAL_RAY_DASHBOARD_PORT}}:localhost:{{.RAY_DASHBOARD_PORT}} \
+               -L {{.LOCAL_GRAFANA_PORT}}:localhost:{{.GRAFANA_PORT}} \
+               -L {{.LOCAL_PROMETHEUS_PORT}}:localhost:{{.PROMETHEUS_PORT}} \
+            > .task/logs/tpu-tunnels.log 2>&1 &
+          echo $! > .task/pids/tpu-tunnels.pid
+        '
+      - echo "Ray client    ray://127.0.0.1:{{.LOCAL_RAY_CLIENT_PORT}}"
+      - echo "Ray dashboard http://127.0.0.1:{{.LOCAL_RAY_DASHBOARD_PORT}}"
+      - echo "Grafana       http://127.0.0.1:{{.LOCAL_GRAFANA_PORT}}"
+      - echo "Prometheus    http://127.0.0.1:{{.LOCAL_PROMETHEUS_PORT}}"
+
   # ---------- Remote: tracking ----------
 
   remote:tracking:up:
@@ -88,11 +239,25 @@ tasks:
     cmds:
       - gcloud compute instances stop "$({{.TOFU}} output -raw tracking_server_name)" --zone "$({{.TOFU}} output -raw zone)"
 
-  remote:tracking:ui:
-    desc: Tunnel MLflow UI to localhost:5000 via IAP (ctrl-c to close)
+  remote:tracking:tunnel:bg:
+    desc: Tunnel MLflow UI to localhost in the background via IAP
     cmds:
-      - echo "MLflow UI at http://localhost:5000 (ctrl-c to close tunnel)"
-      - gcloud compute start-iap-tunnel "$({{.TOFU}} output -raw tracking_server_name)" {{.TRACKING_PORT}} --local-host-port=localhost:5000 --zone "$({{.TOFU}} output -raw zone)"
+      - mkdir -p .task/pids .task/logs
+      - |
+        if [ -f .task/pids/tracking-tunnel.pid ] && kill -0 "$(cat .task/pids/tracking-tunnel.pid)" 2>/dev/null; then
+          echo "Tracking tunnel already running on http://127.0.0.1:{{.LOCAL_TRACKING_PORT}}"
+          exit 0
+        fi
+      - |
+        sh -c '
+          nohup gcloud compute ssh "$({{.TOFU}} output -raw tracking_server_name)" \
+            --zone "$({{.TOFU}} output -raw zone)" \
+            --tunnel-through-iap \
+            -- -L {{.LOCAL_TRACKING_PORT}}:127.0.0.1:{{.TRACKING_PORT}} -N \
+            > .task/logs/tracking-tunnel.log 2>&1 &
+          echo $! > .task/pids/tracking-tunnel.pid
+        '
+      - echo "MLflow UI at http://127.0.0.1:{{.LOCAL_TRACKING_PORT}}"
 
   remote:tracking:ssh:
     desc: SSH to the remote tracking server via IAP
@@ -103,6 +268,31 @@ tasks:
     desc: Tail tracking server logs via IAP
     cmds:
       - gcloud compute ssh "$({{.TOFU}} output -raw tracking_server_name)" --zone "$({{.TOFU}} output -raw zone)" --tunnel-through-iap --command "journalctl -u tracking-server -f"
+
+  remote:tracking:health:
+    desc: Check tracking server health and print the standard internal/external endpoints
+    cmds:
+      - echo "tracking_internal=$({{.TOFU}} output -raw tracking_server_internal_uri)"
+      - echo "tracking_external=$({{.TOFU}} output -raw tracking_server_external_uri)"
+      - echo "artifact_bucket=$({{.TOFU}} output -raw artifact_bucket_uri)"
+      - gcloud compute ssh "$({{.TOFU}} output -raw tracking_server_name)" --zone "$({{.TOFU}} output -raw zone)" --tunnel-through-iap --command "systemctl is-active tracking-server && curl -fsS http://127.0.0.1:{{.TRACKING_PORT}}/ >/dev/null && echo tracking_http_ok"
+
+  remote:tunnels:up:
+    desc: Start TPU tunnels (single SSH) and the IAP-based MLflow tunnel in the background.
+    cmds:
+      - task: remote:tpu:tunnels:bg
+      - task: remote:tracking:tunnel:bg
+
+  remote:tunnels:down:
+    desc: Stop all background tunnels.
+    cmds:
+      - |
+        for f in .task/pids/*.pid; do
+          [ -f "$f" ] || continue
+          kill "$(cat "$f")" 2>/dev/null || true
+          rm -f "$f"
+        done
+        echo "stopped background tunnels"
 
   # ---------- Local tracking (dev) ----------
 
@@ -154,10 +344,10 @@ tasks:
     desc: Start MLflow server against local Postgres
     cmds:
       - mkdir -p results/mlartifacts
-      - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port 5000
+      - mlflow server --backend-store-uri "{{.PG_URI}}" --default-artifact-root ./results/mlartifacts --host 127.0.0.1 --port {{.LOCAL_MLFLOW_DEV_PORT}}
 
   local:ui:
     desc: Open local MLflow UI in browser
     cmds:
-      - echo "MLflow UI at http://127.0.0.1:5000"
-      - xdg-open http://127.0.0.1:5000 2>/dev/null || open http://127.0.0.1:5000 2>/dev/null || true
+      - echo "MLflow UI at http://127.0.0.1:{{.LOCAL_MLFLOW_DEV_PORT}}"
+      - xdg-open http://127.0.0.1:{{.LOCAL_MLFLOW_DEV_PORT}} 2>/dev/null || open http://127.0.0.1:{{.LOCAL_MLFLOW_DEV_PORT}} 2>/dev/null || true
