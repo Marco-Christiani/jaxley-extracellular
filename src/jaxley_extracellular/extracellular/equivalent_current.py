@@ -18,18 +18,28 @@ def phi_e_to_ecs_nA(
 ) -> Array:
     """Convert phi_e to equivalent Jaxley stimulus current in nA.
 
-    Args:
-        phi_e_mV:  (Ncomp, T) extracellular potential at compartment centres [mV].
-        G:         (Ncomp, Ncomp) voltage diffusion operator [1/ms].
-        cm:        (Ncomp,) membrane capacitance per compartment [uF/cm^2].
-        area_um2:  (Ncomp,) membrane surface area per compartment [um^2].
+    Parameters
+    ----------
+    phi_e_mV : Array, shape ``(Ncomp, T)``
+        Extracellular potential at compartment centres, in mV.
+    G : Array, shape ``(Ncomp, Ncomp)``
+        Voltage diffusion operator, in 1/ms. Expected to be a sparse
+        ``BCOO`` matrix; dense G triggers a ``(B, Ncomp, Ncomp)`` XLA
+        broadcast under ``vmap`` that exhausts HBM at large Ncomp.
+    cm : Array, shape ``(Ncomp,)``
+        Specific membrane capacitance per compartment, in uF/cm^2.
+    area_um2 : Array, shape ``(Ncomp,)``
+        Membrane surface area per compartment, in um^2.
 
-    Returns:
-        i_ecs_nA: (Ncomp, T) equivalent injected current [nA], ready to pass
-                  into `module.data_stimulate(i_ecs_nA)`.
+    Returns
+    -------
+    Array, shape ``(Ncomp, T)``
+        Equivalent injected current in nA, ready to pass into
+        ``module.data_stimulate(i_ecs_nA)``.
     """
-    # f_ecs [mV/ms]: induced rate-of-change from extracellular gradient
-    f_ecs: Array = G @ phi_e_mV  # (Ncomp, T)
+    # G is expected to be a sparse BCOO matrix. sparse @ dense avoids the
+    # (B, Ncomp, Ncomp) broadcast that dense G triggers on TPU under vmap.
+    f_ecs: Array = G @ phi_e_mV
 
     # i_density [uA/cm^2]: multiply by capacitance to match Jaxley's ODE units
     i_density: Array = cm[:, jnp.newaxis] * f_ecs  # (Ncomp, T)

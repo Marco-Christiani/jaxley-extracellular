@@ -13,7 +13,11 @@ from jaxtyping import Array
 
 
 def detect_spike(v_trace: Array, threshold_mV: float = 0.0) -> Array:
-    """Return True (scalar bool array) if *v_trace* crosses *threshold_mV*.
+    """Return True if *v_trace* is finite and crosses *threshold_mV*.
+
+    A NaN-bearing trace (numerical divergence at very large drives) returns
+    False so binary searches treat unphysical regimes as "no spike" and
+    narrow away from them.
 
     Parameters
     ----------
@@ -26,7 +30,9 @@ def detect_spike(v_trace: Array, threshold_mV: float = 0.0) -> Array:
     -------
     Array, shape ``()``, dtype bool
     """
-    return jnp.any(v_trace >= threshold_mV)
+    finite = jnp.all(jnp.isfinite(v_trace))
+    crossed = jnp.any(v_trace >= threshold_mV)
+    return finite & crossed
 
 
 def spike_latency_steps(v_trace: Array, threshold_mV: float = 0.0) -> Array:
@@ -166,13 +172,13 @@ def extract_response_features(
     Returns
     -------
     dict with keys:
-        spiked         -- bool scalar
-        latency_ms     -- float scalar (trace duration if no spike)
-        vmax           -- float scalar, peak depolarisation
-        vmin           -- float scalar, peak hyperpolarisation
-        spike_count    -- int32 scalar
-        mean_isi_ms    -- float scalar (-1.0 if < 2 spikes)
-        firing_rate_hz -- float scalar (0.0 if no spikes)
+        spiked: bool scalar
+        latency_ms: float scalar (trace duration if no spike)
+        vmax: float scalar, peak depolarisation
+        vmin: float scalar, peak hyperpolarisation
+        spike_count: int32 scalar
+        mean_isi_ms: float scalar (-1.0 if < 2 spikes)
+        firing_rate_hz: float scalar (0.0 if no spikes)
     """
     return {
         "spiked": detect_spike(v_trace, threshold_mV),
@@ -185,9 +191,7 @@ def extract_response_features(
     }
 
 
-# ---------------------------------------------------------------------------
 # Batched helper: extract features from a (B, T) voltage array
-# ---------------------------------------------------------------------------
 
 
 def extract_response_features_batch(

@@ -8,8 +8,6 @@ running MLflow tracking server.  Start one with::
                   --default-artifact-root ./results/mlartifacts \\
                   --host 127.0.0.1 --port 5000
 
-Or via the taskfile: ``task tracking:server``.
-
 For GCS-backed artifact storage, configure ``--default-artifact-root
 gs://bucket/artifacts`` on the server and ensure ``google-cloud-storage``
 is installed.
@@ -17,8 +15,11 @@ is installed.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -45,18 +46,48 @@ class TrackerProtocol(Protocol):
     def run_id(self) -> str: ...
 
 
-# ------------------------------------------------------------------
 # Environment helpers
-# ------------------------------------------------------------------
+DEL = object()
+
+
+@contextmanager
+def env(**env_vars: str | object) -> Generator[None, None, None]:
+    """Temporarily set environment variables, restore on exit."""
+    original: dict[str, str | None] = {}
+
+    try:
+        for key, value in env_vars.items():
+            original[key] = os.environ.get(key)
+
+            if value is DEL:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(value)
+
+        yield
+    finally:
+        for key, orig_value in original.items():
+            if orig_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = orig_value
 
 
 def _get_git_hash() -> str:
-    """Return the current git HEAD hash, or ``'unknown'``."""
+    """Return the current git HEAD hash, or ``'unknown'``.
+
+    Strips ``LD_PRELOAD`` for the subprocess: on TPU VMs the worker python
+    runs with nix-built tcmalloc preloaded, and inheriting that into the
+    system ``git`` binary (linked against an older glibc) prints a wall of
+    "GLIBC_2.36 not found" warnings before failing.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "LD_PRELOAD"}
     try:
         return (
             subprocess.check_output(
                 ["git", "rev-parse", "HEAD"],
                 stderr=subprocess.DEVNULL,
+                env=env,
             )
             .decode()
             .strip()
@@ -82,9 +113,7 @@ def collect_environment_params() -> dict[str, str]:
     }
 
 
-# ------------------------------------------------------------------
-# NullTracker -- no-op, zero dependencies
-# ------------------------------------------------------------------
+# NullTracker (no-op, zero dependencies)
 
 
 class NullTracker:
@@ -113,9 +142,7 @@ class NullTracker:
         pass
 
 
-# ------------------------------------------------------------------
-# MLflowTracker -- HTTP client to a running tracking server
-# ------------------------------------------------------------------
+# MLflowTracker (HTTP client to a running tracking server)
 
 MLFLOW_DEFAULT_URI = "http://127.0.0.1:5000"
 
@@ -124,7 +151,7 @@ class MLflowTracker:
     """HTTP client to a running MLflow tracking server.
 
     The server owns the backend store (SQLite, Postgres, etc.).
-    This client only speaks HTTP -- no local database concerns.
+    This client only speaks HTTP, no local database concerns.
 
     Parameters
     ----------
@@ -156,33 +183,54 @@ class MLflowTracker:
             return ""
         return str(self._run.info.run_id)
 
-    # -- context manager ---------------------------------------------------
+    # Context manager
 
     def __enter__(self) -> MLflowTracker:
         platform = self._platform_override or detect_platform()
         self._monitor = create_monitor(platform, tracker=self)
-
-        self._mlflow.set_tracking_uri(self._tracking_uri)
-        self._mlflow.set_experiment(self._experiment_name)
-        self._run = self._mlflow.start_run(
-            run_name=self._run_name,
-            log_system_metrics=(platform == Platform.GPU),
-        )
+        with env(LD_PRELOAD=DEL):
+            self._mlflow.set_tracking_uri(self._tracking_uri)
+            self._mlflow.set_experiment(self._experiment_name)
+            self._run = self._mlflow.start_run(
+                run_name=self._run_name,
+                log_system_metrics=(platform == Platform.GPU),
+            )
 
         self._monitor.start()
         return self
 
     def __exit__(self, *args: object) -> None:
-        # Stop monitor BEFORE end_run so the drain thread can flush final metrics.
+        # Stop monitor before end_run so the drain thread flushes final metrics.
         if self._monitor is not None:
             self._monitor.stop()
+
+        # Attach run-wrapper log files (set by infra/scripts/tpu-run.sh) as
+        # MLflow artifacts under run_logs/ for lineage on uncaught exceptions.
+        # SIGKILL still bypasses __exit__.
+        log_dir_env = os.environ.get("TPU_RUN_LOG_DIR")
+        log_tag = os.environ.get("TPU_RUN_TAG")
+        if log_dir_env and log_tag:
+            log_dir = Path(log_dir_env)
+            for suffix in ("log", "exit", "time", "dmesg", "journal", "trace"):
+                p = log_dir / f"{log_tag}.{suffix}"
+                if p.exists():
+                    try:
+                        self._mlflow.log_artifact(str(p), artifact_path="run_logs")
+                    except Exception as e:
+                        print(f"Failed to save artifact {p}", e)
+
+        # Flush any async-logged metrics before closing the run.
+        try:
+            self._mlflow.flush_async_logging()
+        except Exception:
+            pass
 
         exc_type = args[0] if args else None
         status = "FAILED" if exc_type is not None else "FINISHED"
         self._mlflow.end_run(status=status)
         self._run = None
 
-    # -- logging ------------------------------------------------------------
+    # Logging
 
     @staticmethod
     def _flatten_params(params: dict[str, Any], prefix: str = "") -> dict[str, str]:
@@ -200,7 +248,9 @@ class MLflowTracker:
         self._mlflow.log_params(flat)
 
     def log_metrics(self, metrics: dict[str, float], step: int | None = None) -> None:
-        self._mlflow.log_metrics(metrics, step=step)
+        # synchronous=True so each metric is flushed before return; otherwise
+        # an interrupted teardown can drop the async queue and lose them.
+        self._mlflow.log_metrics(metrics, step=step, synchronous=True)
 
     def set_status(self, status: str) -> None:
         self._mlflow.set_tag("status", status)
