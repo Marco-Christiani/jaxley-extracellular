@@ -3,7 +3,8 @@
 Provides a ``SystemMonitor`` ABC with concrete implementations:
 
 - ``NullMonitor`` - CPU and GPU (no custom collection needed; trackers handle GPU natively)
-- ``TpuMonitor`` - TPU, daemon subprocess polling ``libtpu.sdk.tpumonitoring`` at 1 Hz
+- ``TpuMonitor`` - TPU, daemon subprocess polling ``libtpu`` (or ``tpu-info`` as
+  a CLI fallback) at 1 Hz
 
 ``TpuMonitor`` accepts any ``MetricsLogger`` (the minimal protocol) so it is not
 coupled to a specific tracker backend.
@@ -13,7 +14,12 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
+import os
 import queue
+import re
+import shutil
+import subprocess
+import sys
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -92,6 +98,74 @@ class NullMonitor(SystemMonitor):
         pass
 
 
+def _resolve_tpumonitoring() -> Any | None:
+    """Try several known import paths for the libtpu monitoring API.
+
+    The module has moved between ``libtpu.sdk.tpumonitoring`` and
+    ``libtpu.tpumonitoring`` across libtpu versions. Returns the first one
+    that imports, or ``None`` if none are available.
+    """
+    for path in ("libtpu.sdk.tpumonitoring", "libtpu.tpumonitoring"):
+        try:
+            mod_root, attr = path.rsplit(".", 1)
+            mod = __import__(mod_root, fromlist=[attr])
+            return getattr(mod, attr)
+        except (ImportError, AttributeError):
+            continue
+    return None
+
+
+def _libtpu_metrics(tpumonitoring: Any) -> dict[str, float]:
+    """One libtpu polling sample, normalised to MLflow-friendly metric names."""
+    metrics_raw: Any = tpumonitoring.get_metrics()
+    out: dict[str, float] = {}
+    if hasattr(metrics_raw, "tensorcore_util"):
+        out["system/tpu_tensorcore_util"] = float(metrics_raw.tensorcore_util)
+    if hasattr(metrics_raw, "duty_cycle_pct"):
+        out["system/tpu_duty_cycle_pct"] = float(metrics_raw.duty_cycle_pct)
+    if hasattr(metrics_raw, "hbm_capacity_usage"):
+        out["system/tpu_hbm_usage_bytes"] = float(metrics_raw.hbm_capacity_usage)
+    if hasattr(metrics_raw, "hbm_capacity_total"):
+        out["system/tpu_hbm_total_bytes"] = float(metrics_raw.hbm_capacity_total)
+    return out
+
+
+_TPU_INFO_NUM_RE = re.compile(r"([\d.]+)")
+
+
+def _tpu_info_metrics(tpu_info_bin: str) -> dict[str, float]:
+    """One `tpu-info` CLI sample, parsed to MLflow-friendly metric names.
+
+    Falls back to a coarse parse: extract the first numeric value per row of
+    the table that mentions a known column. Robust to small format changes
+    in the upstream `tpu-info` output but loses sub-fields.
+    """
+    try:
+        out = subprocess.run(
+            [tpu_info_bin, "--metric"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+    metrics: dict[str, float] = {}
+    chip_idx = -1
+    for line in out.stdout.splitlines():
+        low = line.lower()
+        if "chip" in low and "device" in low:
+            chip_idx += 1
+        nums = _TPU_INFO_NUM_RE.findall(line)
+        if not nums:
+            continue
+        suffix = f"_chip{chip_idx}" if chip_idx >= 0 else ""
+        if "tensorcore" in low and "util" in low:
+            metrics[f"system/tpu_tensorcore_util{suffix}"] = float(nums[0])
+        elif "duty" in low and "cycle" in low:
+            metrics[f"system/tpu_duty_cycle_pct{suffix}"] = float(nums[0])
+        elif "hbm" in low and ("usage" in low or "used" in low) and len(nums) >= 1:
+            metrics[f"system/tpu_hbm_usage_bytes{suffix}"] = float(nums[0])
+    return metrics
+
+
 def _tpu_polling_loop(
     metrics_queue: multiprocessing.Queue[_MetricsItem],
     poll_interval: float,
@@ -99,34 +173,59 @@ def _tpu_polling_loop(
     """Target for the TPU monitoring subprocess.
 
     Runs in a separate process (not thread) for jaxlib compatibility.
-    Polls ``libtpu.sdk.tpumonitoring`` at ``poll_interval`` Hz and puts
-    ``(metrics, step)`` tuples into ``metrics_queue``.  The main process
-    drains the queue and logs via the tracker.
+    Polls libtpu (preferred) or the ``tpu-info`` CLI (fallback) at
+    ``poll_interval`` Hz and puts ``(metrics, step)`` tuples into
+    ``metrics_queue``.  The main process drains the queue and logs via
+    the tracker.
+
+    Failure modes are surfaced to stderr (captured by ``infra/scripts/tpu-run.sh``
+    into the run's ``.log`` file) instead of swallowed silently, so the
+    "no TPU metrics in MLflow" symptom is debuggable from the run log alone.
     """
-    try:
-        from libtpu.sdk import tpumonitoring  # type: ignore[import-not-found]
-    except ImportError:
+    tpumonitoring = _resolve_tpumonitoring()
+    tpu_info_bin = shutil.which("tpu-info") or os.path.expanduser("~/jx-tpu-env/bin/tpu-info")
+    has_tpu_info = os.path.exists(tpu_info_bin) and os.access(tpu_info_bin, os.X_OK)
+
+    if tpumonitoring is not None:
+        source = "libtpu"
+    elif has_tpu_info:
+        source = "tpu-info"
+    else:
+        print(
+            "TpuMonitor: no metrics source available "
+            "(libtpu.sdk.tpumonitoring import failed and `tpu-info` not on PATH); "
+            "TPU system metrics will not be logged.",
+            file=sys.stderr, flush=True,
+        )
+        # Heartbeat: prove the monitor process started, so its absence in
+        # MLflow is unambiguously a wiring issue rather than a silent miss.
+        metrics_queue.put(({"system/tpu_monitor_alive": 0.0}, 0))
         return
 
-    step = 0
+    print(f"TpuMonitor: polling source={source} interval={poll_interval}s",
+          file=sys.stderr, flush=True)
+    metrics_queue.put(({"system/tpu_monitor_alive": 1.0}, 0))
+
+    step = 1
+    consecutive_failures = 0
     while True:
         try:
-            metrics_raw: Any = tpumonitoring.get_metrics()  # pyright: ignore[reportUnknownVariableType]
-            metrics: dict[str, float] = {}
-            if hasattr(metrics_raw, "tensorcore_util"):
-                metrics["system/tpu_tensorcore_util"] = float(metrics_raw.tensorcore_util)
-            if hasattr(metrics_raw, "duty_cycle_pct"):
-                metrics["system/tpu_duty_cycle_pct"] = float(metrics_raw.duty_cycle_pct)
-            if hasattr(metrics_raw, "hbm_capacity_usage"):
-                metrics["system/tpu_hbm_usage_bytes"] = float(metrics_raw.hbm_capacity_usage)
-            if hasattr(metrics_raw, "hbm_capacity_total"):
-                metrics["system/tpu_hbm_total_bytes"] = float(metrics_raw.hbm_capacity_total)
+            if tpumonitoring is not None:
+                metrics = _libtpu_metrics(tpumonitoring)
+            else:
+                metrics = _tpu_info_metrics(tpu_info_bin)
 
             if metrics:
                 metrics_queue.put((metrics, step))
                 step += 1
-        except Exception:
-            logger.debug("TPU metrics poll failed", exc_info=True)
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+        except Exception as e:
+            consecutive_failures += 1
+            if consecutive_failures in (1, 10, 100):
+                print(f"TpuMonitor: poll failed ({source}, n={consecutive_failures}): {e!r}",
+                      file=sys.stderr, flush=True)
 
         time.sleep(poll_interval)
 
