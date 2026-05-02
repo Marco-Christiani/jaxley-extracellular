@@ -217,7 +217,7 @@ RMSE of $0.446\,\mathrm{mV}$ on the full-morphology BBP Pyr cell under
 extracellular stimulation against NEURON, and a $\sim\!34\times$
 wall-clock speedup over serial single-core NEURON at $B=1000$ on a
 single TPU. The reproducibility appendix in the paper documents the
-infrastructure stack and the artefact distribution.
+infrastructure stack and the artifact distribution.
 
 ## Quick Start
 
@@ -252,10 +252,10 @@ nix flake check
 # 3. Build the paper PDF.
 nix run .#paper
 
-# 4. Regenerate every figure from the curated artefact set.
-#    Requires the artefact distribution unpacked under
+# 4. Regenerate every figure from the curated artifact set.
+#    Requires the artifact distribution unpacked under
 #    `results/paper_package/`. See the paper's reproducibility appendix
-#    for the artefact-set URL.
+#    for the artifact-set URL.
 python -m paper.make_figures --which all
 ```
 
