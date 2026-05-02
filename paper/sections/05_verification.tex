@@ -1,0 +1,63 @@
+% =============================================================
+\section{Numerical verification}\label{sec:results-verify}
+% =============================================================
+
+Three numerical checks anchor the rest of the paper: that $G$ matches what
+Jaxley's solver computes internally, that $G\boldsymbol{\phi}$ recovers the
+continuous activating function as the discretisation refines, and that
+gradients propagate through the full simulator. All three are exercised in
+the test suite (\texttt{test\_ecs\_operator\_consistency} and
+\texttt{test\_ecs\_grad}).
+
+\paragraph{Operator round-trip.}
+We compare $G\mathbf{v}$ against Jaxley's internal axial term on a
+50-compartment cable in float64, isolating the axial term by zeroing
+the membrane contributions (\texttt{voltage\_terms}\,$=\,0$ and
+\texttt{constant\_terms}\,$=\,0$). The two outputs agree to
+$\sim\!10^{-13}$ per-compartment relative error
+(\cref{fig:verification}, left); once $G\mathbf{v}$ matches Jaxley's
+own axial term, $G\boldsymbol{\phi}$ is the correct extracellular
+forcing on the same tree.
+
+\paragraph{$O(\Delta x^2)$ convergence.}
+For a uniform straight cable with a point-source electrode the activating
+function has the closed form $\rho_a^{-1}\,\partial^2\phi/\partial x^2$.
+We compare $G\boldsymbol{\phi}$ against this analytical reference on the
+central $10\,\%$ of the cable (boundary effects dominate near the ends)
+across compartment counts $\{50,\,100,\,200,\,400\}$. The relative error
+decreases by a factor of $\sim 4$ per doubling
+($3.95\times,\,3.99\times,\,4.00\times$), consistent with the
+$O(\Delta x^2)$ rate of the underlying $[1,-2,1]/\Delta x^2$ stencil
+(\cref{fig:verification}, right).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/verification.png}
+  \caption{Numerical verification of the discrete activating function.
+  Left: histogram of per-compartment relative error of $G\mathbf{v}$ vs
+  Jaxley's internal \texttt{\_voltage\_vectorfield} on a $50$-compartment
+  HH cable in float64; the median is $\sim\!3\!\times\!10^{-16}$ and no
+  compartment exceeds $\sim\!10^{-13}$. Right: relative error of
+  $G\boldsymbol{\phi}$ versus the closed-form
+  $\rho_a^{-1}\partial^2\phi/\partial x^2$ on the central $10\,\%$ of the
+  cable, plotted against $\Delta x$ on log--log axes; the dashed line is
+  a reference slope-2, and the box reports the per-doubling error
+  ratios.}
+  \label{fig:verification}
+\end{figure}
+
+\paragraph{Gradient flow.}
+The pipeline is JAX-traceable end to end, so \texttt{jax.grad} of any
+voltage observable propagates through the field model, the operator,
+the encoding, and Jaxley's integrator. Unit tests confirm finite,
+non-zero gradients with respect to electrode position, waveform, and
+tissue conductivity. At full BBP scale, the position gradient through
+a $700$-compartment Pyr cell under a $-50\,\mu$A, $1\,$ms cathodic
+pulse from electrode $(0, 100, 0)\,\mu$m is
+\[
+  \frac{\partial v_{\mathrm{soma,\,peak}}}{\partial \mathbf{x}_e}
+  = (\,0.330,\,-0.371,\,-0.243\,)\;\mathrm{mV}/\mu\mathrm{m},
+\]
+returned in $37.6\,$s on a v5e single chip. The full receipt is part
+of the artifact set described in the reproducibility appendix.
+

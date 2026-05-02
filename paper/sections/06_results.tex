@@ -1,0 +1,313 @@
+% =============================================================
+\section{Empirical results}\label{sec:results-empirical}
+% =============================================================
+
+This section answers four questions that a stimulation designer or
+methodologist would put to the simulator. Does it agree with NEURON on
+a realistic morphology before we trust any extracellular result? At a
+given electrode distance and pulse width, what amplitude is needed to
+evoke a spike? Where in the asymmetric biphasic waveform space does
+the cell respond, given the same charge per pulse? And does the
+infrastructure scale to design-space sweeps that NEURON cannot run? We
+close with a gradient receipt that motivates the next step --- direct
+optimisation of the waveform itself. All runs reported below are part
+of the curated artifact set described in the reproducibility appendix;
+wall-clock figures are on a single v5e chip unless stated otherwise.
+
+\subsection{Validation against NEURON}\label{sec:res-neuron}
+
+Before any stimulation result from this pipeline is trustworthy, the
+simulator has to agree with NEURON on the same cell. We validate in
+three steps, each adding one new mechanism on top of the previous so
+that residuals can be attributed.
+
+\paragraph{Setup and confounders.}
+The NEURON reference uses the same BBP cADpyr229 morphology that
+Jaxley loads, with three confounders equalised before measurement.
+(i) Axon myelination is enabled by default in the BBP NEURON template;
+we disable it for the comparison since our Jaxley implementation does
+not model myelin. (ii) The \texttt{jaxley\_mech.channels.l5pc} ports
+apply a fixed $Q_{10}$ temperature correction; we run NEURON at
+$34\,^\circ$C to match. (iii) NEURON's \texttt{geom\_nseg} produces $1131$
+segments on this morphology, while Jaxley with \texttt{ncomp}$\,=\,2$
+and \texttt{max\_branch\_len}$\,=\,100$ produces $700$ compartments;
+we report the mismatch rather than forcing them to match.
+
+\paragraph{Step 1: channel kinetics.} We reduce the morphology to a
+$20\,\mu$m$\times 20\,\mu$m cylinder (\texttt{parity\_single\_soma}),
+so that the comparison exercises only channel kinetics and ion
+reversals. With the full BBP Pyr and PV channel sets installed, spike
+counts agree to $\pm 1$ over $\sim\!50$ spikes per cell (Pyr: $18$
+NEURON / $16$ Jaxley; PV: $50$/$51$), and AP peak heights agree to
+$\pm 0.04\,$mV across both cells. The match is consistent with a
+source-level diff of the relevant \texttt{jaxley\_mech} channels
+against the BBP \texttt{.mod} files.
+
+\paragraph{Step 2: full-morphology Pyr, intracellular.} We instantiate
+the full cADpyr229 morphology in both simulators and inject a
+$0.5\,$nA somatic step current with extracellular coupling held out
+(\texttt{parity\_bbp\_pyr}). Both simulators emit $3$ spikes
+(\cref{fig:parity-intracellular}); first-spike latency differs by
+$-50\,\mu$s ($2$ integration steps at $\Delta t = 0.025\,$ms), and AP
+peak by $+0.74\,$mV. Subthreshold
+waveform RMSE is $0.275\,$mV with Pearson $r = 0.9995$;
+suprathreshold full-trace RMSE is $6.032\,$mV with $r = 0.9253$, where
+the latter is dominated by the $50\,\mu$s spike-edge offset. The
+$-0.38\,$mV resting-potential residual is explained by our
+Euclidean-distance approximation to BBP's path-distance apical $I_h$
+gradient (\cref{sec:cells-bbp}); a path-distance traversal would close
+it further.
+
+\paragraph{Step 3: full-morphology Pyr, extracellular.} The headline
+claim of this paper is that ECS works on a realistic branched cell.
+We test it by comparing voltage traces with NEURON when both
+simulators see the same point-source field on the same Pyr
+morphology. After aligning Jaxley's compartment centres and NEURON's
+segment readouts to the same physical sites
+(\texttt{parity\_ecs.bbp\_pyr}), per-site voltage RMSE is
+$0.387,\,0.553,\,0.505,\,0.322\,$mV at soma, apical, basal and axon
+respectively (median $0.446\,$mV); the site-local $\phi$ matches
+between the two simulators (\cref{fig:parity-ecs}). The ECS residuals should be read against
+the Step-2 baseline, since the underlying solver and discretisation
+differences carry over. Combined with the analytical
+$O(\Delta x^2)$ convergence of \cref{sec:results-verify} on a uniform
+straight cable, this anchors the activating-function pipeline at both
+geometric extremes: closed-form correctness on a straight cable and
+external parity on a branched real cell. The practical consequence is
+that ECS-on-Pyr in this pipeline reproduces NEURON behaviour to
+sub-millivolt residuals on a realistic morphology --- enough fidelity
+to support design-space sweeps that NEURON cannot run in the same time
+budget (\cref{sec:res-throughput}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/bbp_intracellular_parity.png}
+  \caption{Step 2 (full-morphology Pyr, intracellular) cross-check.
+  NEURON (black) and Jaxley (dashed) soma voltage traces under $0.1\,$nA
+  subthreshold and $0.5\,$nA suprathreshold step currents on the same
+  cADpyr229 morphology. Subthreshold RMSE $0.275\,$mV
+  ($r = 0.9995$); suprathreshold RMSE $6.032\,$mV
+  ($r = 0.9253$), dominated by a $-50\,\mu$s spike-edge offset
+  attributable to the $700$-vs-$1131$ compartmentalisation difference.}
+  \label{fig:parity-intracellular}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/bbp_ecs_parity.png}
+  \caption{Step 3 (full-morphology Pyr, extracellular) cross-check.
+  NEURON (black) and Jaxley (dashed) voltage traces at the soma and
+  apical readout sites after aligning the two simulators' compartment
+  centres to within $0\,\mu$m on the same Pyr morphology, plus per-site
+  RMSE bars and the site-local $\phi$ that drives the ECS coupling.
+  Median per-site RMSE $0.446\,$mV; the residuals carry over from the
+  Step-2 baseline rather than reflecting a new ECS-specific
+  discrepancy.}
+  \label{fig:parity-ecs}
+\end{figure}
+
+\subsection{Strength--duration on the HH cable}\label{sec:res-sd}
+
+At a given electrode distance and pulse width, what amplitude does it
+take to evoke a spike? The strength--duration curve is the standard
+first answer to that question, and underlies almost every clinical and
+engineering decision downstream of it~\cite{4122088}. We define the threshold $A^*$ for a fixed
+configuration $(d, \text{polarity}, t_p)$ as the smallest electrode
+amplitude that elicits a single soma spike in the simulation:
+\[
+  A^*(d,\,\text{polarity},\,t_p)
+  \;=\; \inf\bigl\{A \ge 0\,:\,F(w_{A,t_p};\,d) \text{ spikes}\bigr\}.
+\]
+Each $A^*$ is found by a one-dimensional binary search in $A$, with the
+spike-detection criterion threshold-crossing of the soma voltage (see
+\texttt{response.detect\_spike}). The full sweep is one binary search per
+$(d,\,\text{polarity},\,t_p)$ triple --- four electrode distances
+$\{25,\,50,\,100,\,200\}\,\mu$m, three waveform polarities (monophasic
+cathodic, monophasic anodic, charge-balanced biphasic), and nine pulse
+widths from $0.05$ to $2\,$ms --- for $108$ thresholds in total.
+
+The search uses a uniform $[0,\,5000]\,\mu$A bracket with $14$
+bisection iterations, giving a resolution of $\sim\!0.3\,\mu$A; spike
+detection stays stable across this range for the HH cable. The whole
+sweep runs in float-32. Cathodic and biphasic thresholds are well-resolved at
+every $(d,\,t_p)$ pair and follow the textbook strength--duration
+shape, declining toward a rheobase as $t_p$ grows
+(\cref{fig:strength-duration}). Monophasic anodic elicits spikes only
+at short pulse widths and short distances; it saturates at the bracket
+ceiling for longer pulses. This polarity asymmetry is the discrete
+analogue of the activating-function sign argument: cathodic stimulation
+sets up a depolarising forcing in the central segments where the cable
+fires first, whereas anodic stimulation depolarises the cable ends,
+which only triggers under brief, geometrically-favourable
+conditions~\cite{rattay1986analysis,Mcneal1976AnalysisOA}. For a
+designer choosing parameters, the takeaway is that
+ms-scale cathodic pulses minimise charge per spike at every distance
+in the sweep, charge-balanced biphasic costs roughly two-fold more,
+and pure anodic stimulation is only viable in the short-pulse corner.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/strength_duration.png}
+  \caption{Strength--duration curves on the $50$-compartment HH cable.
+  One panel per electrode distance; one curve per waveform polarity.
+  Threshold amplitude $|A^*|$ falls toward a rheobase as pulse width
+  grows, and grows with electrode distance as the $1/d$ field decay
+  implies. The dotted line is the binary-search ceiling ($5000\,\mu$A);
+  pulse-width points missing from a curve indicate no spike below that
+  ceiling, which characterises the anodic regime at long widths.}
+  \label{fig:strength-duration}
+\end{figure}
+
+\subsection{Charge-balanced biphasic grid}\label{sec:res-grid}
+
+Asymmetric biphasic pulses are the clinical lever for trading
+activation selectivity against charge efficiency: at the same total
+delivered charge per pulse, where on the $(T_p, T_n)$ plane does the
+cell actually respond? A symmetric charge-balanced biphasic pulse has
+two equal-and-opposite phases of equal duration; a clinical waveform
+almost always has unequal phase durations (longer-low cathodic +
+short-high anodic, or vice versa)~\cite{wongsarnpigoon2010energy}. To characterise
+this region of waveform space, we hold the electrode at $d=100\,\mu$m
+(the cleanest distance from the strength--duration sweep) and grid four
+parameters: anodic phase duration $T_p$, cathodic phase duration $T_n$,
+anodic amplitude $A_p$ (with cathodic amplitude $A_n$ pinned by
+$A_p T_p = A_n T_n$ to keep total injected charge zero), and pulse-train
+frequency $f$. We record spike count, latency, and peak voltage per
+configuration rather than searching for a threshold, so each grid point
+is one forward simulation.
+
+The grid has $T_p,\,T_n \in \{50,\,100,\,200,\,500\}\,\mu$s
+(four values each), $A_p \in \{10,\,20,\,30,\,40,\,80\}\,\mu$A, and
+pulse-train frequencies $f \in \{100,\,200,\,500,\,1000\}\,$Hz, for
+$315$ valid charge-balanced configurations. The full grid
+runs in $16\,$min on the v5litepod-4 pod-slice via
+\texttt{vmap}-over-configuration with hierarchical scan-checkpointing
+(\cref{sec:res-throughput}). Spike crossings concentrate in two
+regions: at the strongest amplitude ($A_p = 80\,\mu$A) for short-to-mid
+$T_p$, and along the asymmetric $T_p = 500\,\mu$s edge across all
+amplitudes (\cref{fig:biphasic-grid}); the symmetric diagonal
+$T_p = T_n$ is far less effective at the same charge per pulse. The
+implication for waveform design is direct: asymmetry is not a marginal
+parameter --- on this cell, at this distance, swapping a symmetric
+biphasic pulse for an asymmetric one with the same charge can be the
+difference between sub-threshold and reliable spiking.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/biphasic_grid.png}
+  \caption{Charge-balanced biphasic grid on the BBP L2/3 Pyr cell at
+  $d = 100\,\mu$m. Each panel is a $(T_p, T_n)$ heatmap of the maximum
+  soma voltage over the four pulse-train frequencies, with one panel
+  per anodic amplitude $A_p$. The dotted diagonal $T_p = T_n$ marks the
+  symmetric-biphasic line; cells where $\mathit{vmax}$ crosses
+  $0\,$mV correspond to a soma spike at some frequency in the sweep.
+  White cells were excluded by the constraint that $A_n = A_p\,T_p / T_n$
+  stay within the cell's stable amplitude range.}
+  \label{fig:biphasic-grid}
+\end{figure}
+
+\subsection{Throughput scaling on TPU}\label{sec:res-throughput}
+
+The point of the simulator extension is to support design-space
+sweeps that were previously infeasible. We measure how it scales
+across two regimes that probe different bottlenecks. A
+\emph{cheap-cells} sweep isolates per-cell compile and kernel-dispatch
+overhead at small problem size: \texttt{ncomp}$=2$ on the BBP Pyr
+($\sim\!700$ compartments per cell after branchpoint expansion), $B$
+up to $1024$ on the v5litepod-4 pod-slice. A \emph{full-fidelity}
+sweep is the actual scientific workload: $50$-compartment branches on
+the same Pyr cell ($\approx\!17\,500$ compartments per cell), $B$ up
+to $4096$ on the same pod-slice. Each $B$ value is a single
+\texttt{jax.jit(jax.vmap(\ldots))} dispatch; we report the cached
+(JIT-warm) timing.
+
+The cheap-cells curve scales linearly to $B=1024$ at $5.1\,$ms per cell
+($\sim\!195$ cells/s); the full-fidelity curve scales linearly through
+$B=1024$, peaks at $7.28$ cells per second at $B=2048$, and rolls over
+at $B=4096$ as the four chips approach arithmetic-intensity saturation
+(\cref{fig:throughput-scaling}). The full-fidelity regime depends on
+the sparse-$G$ and \texttt{checkpoint\_lengths} choices in the Method
+(\cref{sec:method}); without either, the $(T,\,B,\,N)$ voltage
+history overflows the v5e's $16\,$GB chip memory at $B \ge 256$.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/throughput_v5p4_scaling.png}
+  \caption{Jaxley batch throughput on the v5litepod-4 pod-slice for two
+  workload regimes: cheap cells ($700$ compartments per cell, blue) and
+  full-fidelity BBP Pyr ($\sim\!17\,500$ compartments per cell, red).
+  Throughput scales linearly through $B=1024$ in both regimes; the
+  full-fidelity curve peaks at $7.28$ cells per second at $B=2048$ and
+  saturates at $B=4096$. JIT-warm timings.}
+  \label{fig:throughput-scaling}
+\end{figure}
+
+\paragraph{Comparison with NEURON.} The same $700$-compartment Pyr cell
+on a $T_\text{sim} = 200\,$ms protocol runs at $0.286$ simulations per
+second under serial single-core NEURON (the default BBP setup), against
+$9.67$ simulations per second for Jaxley at $B = 1000$ on a single TPU
+once the JIT cache is warm --- a $\sim\!34\times$ wall-clock speedup
+(\cref{fig:throughput}).
+NEURON has parallel-CPU variants such as
+CoreNEURON~\cite{Kumbhar2019CoreNEURONA} and
+experimental GPU support that we did not benchmark; the relevant
+comparison for our purposes is between a CPU-serial reference and an
+accelerator-batched formulation. AI accelerators are SIMT/SIMD
+throughput devices, and a batched-\texttt{vmap} formulation is the
+workload pattern they are designed for; a CPU-bound serial framework
+cannot expose the same batch parallelism without a similar
+reformulation. The practical consequence: the parameter sweeps in
+\cref{sec:res-sd,sec:res-grid} finish in tens of minutes, putting
+sweeps over the full waveform-and-geometry design space within reach
+of a single TPU job.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/bbp_throughput.png}
+  \caption{Wall-clock comparison on the same $700$-compartment Pyr cell
+  and $T_\text{sim} = 200\,$ms protocol: serial single-core NEURON
+  (blue) versus Jaxley on a single TPU chip (red). At $B=1000$, NEURON
+  takes $58.3\,$min (measured), Jaxley takes $1.7\,$min ($103.4\,$ms
+  per simulation, JIT-warm), giving a $\sim\!34\times$ wall-clock
+  speedup. The dashed blue line is the linear extrapolation of the
+  per-NEURON-sim cost.}
+  \label{fig:throughput}
+\end{figure}
+
+\subsection{Gradient-based design signal}\label{sec:res-grad}
+
+For the differentiability we built into the pipeline to matter for
+stimulation design, the gradients have to point in the right
+direction --- and their direction has to mean something physical.
+Establishing that gradients exist (\cref{sec:results-verify}) is a
+prerequisite for, but not equivalent to, showing that they carry usable
+design signal. The position gradient reported in
+\cref{sec:results-verify} admits a direct physical reading. With
+the electrode at $(0,\,100,\,0)\,\mu$m, the negative $y$-component of
+$\partial v_\mathrm{soma,\,peak} / \partial \mathbf{x}_e$ means moving
+the electrode farther from the cell along its dorsal axis reduces the
+soma response, consistent with the $1/d$ decay in the field model; the
+horizontal components measure the local field anisotropy induced by the
+asymmetric placement of dendrites relative to the electrode. Free-form
+optimisation of $w(t)$ against a spike-elicitation target under
+charge-balance and amplitude constraints is a natural next step and is
+left as future work (\cref{sec:limitations}). What this section
+establishes is that the same pipeline that runs the empirical sweeps
+of \cref{sec:res-sd,sec:res-grid} also returns design-relevant
+gradients in a single backward pass --- placing direct waveform
+optimisation, rather than gradient-free search, within reach of the
+same compute budget.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.78\linewidth]{figures/gradient_arrow.png}
+  \caption{Position-gradient direction on the BBP L2/3 Pyr cell. Grey
+  points are the $700$-compartment morphology projected onto the
+  $y$-$z$ plane; the soma is marked with a black dot, the electrode
+  ($\mathbf{x}_e = (0,\,100,\,0)\,\mu$m) with a black cross. The
+  orange arrow shows the direction of
+  $\partial v_\mathrm{soma,\,peak} / \partial \mathbf{x}_e$, i.e.\ the
+  direction in which moving the electrode increases the soma peak.}
+  \label{fig:gradient-arrow}
+\end{figure}
+

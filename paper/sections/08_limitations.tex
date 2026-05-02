@@ -1,0 +1,58 @@
+% =============================================================
+\section{Limitations and future work}\label{sec:limitations}
+% =============================================================
+
+\paragraph{Limitations.}
+\begin{itemize}
+  \item \emph{Volume conductor.} The field model is a homogeneous,
+  isotropic, infinite point-source monopole. Tissue anisotropy,
+  finite electrode geometry (cuff, paddle, contact size), and the
+  bone--CSF--grey-matter layering used in DBS planning are not
+  represented.
+  \item \emph{Quasi-static assumption.} Tissue capacitance is ignored;
+  this is standard at neural-stimulation frequencies but breaks down at
+  very short pulse edges.
+  \item \emph{Float-32 caveat.} The production sweeps run in float-32
+  after a $0.77\,\%$ threshold-difference check against float-64 on one
+  HH cable configuration; the check should be repeated per cell type
+  before reusing float-32 in a regime we have not validated.
+  \item \emph{PV cell stability.} The full-morphology BBP L2/3 LBC
+  basket cell is unstable in Jaxley's default integrator (NaN at
+  $\sim\!30\,$ms even unstimulated), traced to BBP's
+  $g_\mathrm{pas} = 1\!\times\!10^{-6}\,$S/cm$^2$ on PV apical and
+  basal --- $30\times$ lower than the Pyr value and tolerated by NEURON
+  but not by the Jaxley defaults. Single-compartment PV parity passes
+  (\cref{sec:res-neuron}); all full-morphology runtime claims in this
+  paper are therefore Pyr-only.
+  \item \emph{Pyr Ih path-distance traversal.} The
+  $-0.38\,$mV resting-potential offset against NEURON
+  (\cref{sec:res-neuron}) is the residual of approximating BBP's
+  path-distance apical $I_h$ gradient with Euclidean distance.
+  Replacing the approximation with a parent-pointer breadth-first
+  traversal would close the residual but we did not implement it.
+  \item \emph{Solver floor.} \texttt{checkpoint\_lengths} bounds memory
+  but not arithmetic. The backward-Euler scan dominates the per-step
+  cost on a v5e chip and is what saturates the throughput curve at
+  $B=2048$ in \cref{sec:res-throughput}.
+\end{itemize}
+
+\paragraph{Future work.}
+Three lines of follow-up sit immediately on top of what is here. First,
+restoring full PV cell coverage by stabilising the LBC integration ---
+either with an explicit smaller-timestep regime, a leak-conductance
+floor, or a stiff-aware solver --- and applying the BBP path-distance
+$I_h$ gradient to PV apical and basal as in Pyr. Second, gradient-based
+optimisation of the free-form waveform $w(t)$ against a
+spike-elicitation surrogate, under charge-balance and amplitude
+constraints, evaluated against the strength--duration baseline of
+\cref{sec:res-sd}. Third, selectivity: two cell models with different
+geometries placed in the same extracellular field, optimising $w(t)$
+to drive a soma spike in the target cell while keeping the non-target
+subthreshold. The Pareto frontier between activation and sparing is
+exactly what the differentiable pipeline is built to trace; a
+penalty-based formulation
+$\mathcal{L}(w) = \lVert w \rVert_1 \Delta t
++ \lambda\,\tilde{F}(w;\theta_2)$ subject to
+$\tilde{F}(w;\theta_1) \ge \tau$ keeps the problem smooth and lets a
+$\lambda$-sweep trace the frontier directly.
+

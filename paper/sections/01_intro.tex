@@ -1,0 +1,59 @@
+
+% =============================================================
+\section{Introduction}\label{sec:intro}
+% =============================================================
+
+Clinical neurostimulation devices, including deep brain stimulators and
+spinal cord stimulators, deliver pulsed extracellular currents through
+electrodes placed near the target tissue. Therapeutic outcome depends on a
+small set of waveform parameters --- pulse width, shape, amplitude,
+frequency, polarity --- whose effect on neural activation is nonlinear and
+sensitive to local geometry. In present clinical practice these parameters
+are tuned by hand, guided by symptom observation across patient visits.
+Computational design has been explored as an
+alternative, but the simulators in widespread use are slow when the goal is
+to sweep the design space.
+
+The standard pipeline pairs a volume-conductor field model with the NEURON
+simulator~\cite{Hines2001NeuronAT} to integrate the resulting
+transmembrane response. The default BBP NEURON workflow runs serially
+on a single CPU core, so existing studies that search for energy-efficient or selective
+waveforms have either used genetic
+algorithms~\cite{grill2015model,wongsarnpigoon2010energy} or trained
+surrogate neural networks on NEURON
+outputs~\cite{melissano2024efficient}. Genetic search returns no gradient
+and requires many forward simulations per design. Surrogates are fast at
+inference but introduce approximation error and have to be retrained
+whenever the underlying biophysical model changes.
+
+Jaxley~\cite{deistler2025jaxley} is a recently published JAX-native
+compartmental simulator. It supports automatic differentiation, JIT
+compilation, \texttt{vmap}, and the modern \texttt{jax.sharding} API for
+multi-device execution. It does not currently expose extracellular
+stimulation. We add it without forking the simulator: the extension
+constructs the discrete activating function from Jaxley's own axial
+diffusion operator and injects the result as a compartmental current
+through the public stimulus API.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item A differentiable extracellular-stimulation pipeline through
+  Jaxley's public stimulus API, with no fork of the upstream simulator.
+  \item A derivation of the discrete activating function
+  $G\boldsymbol{\phi}$ from Jaxley's pre-normalised voltage diffusion
+  operator $G$.
+  \item Numerical verification: agreement with Jaxley's internal voltage
+  vector field to $\sim\!10^{-13}$ relative error in float64,
+  $O(\Delta x^2)$ convergence to the analytical activating function, and
+  end-to-end gradient flow through \texttt{jx.integrate}.
+  \item Three-step cross-validation against NEURON --- single-compartment
+  kinetics, full-morphology Pyr intracellular, and full-morphology Pyr
+  under extracellular stimulation --- with characterised residuals at
+  each step.
+  \item TPU-scale empirical results on the BBP L2/3 pyramidal cell:
+  a strength--duration sweep across distance and polarity, a
+  charge-balanced biphasic grid of $315$ valid configurations, and a
+  throughput--scaling curve at $\sim\!34\times$ wall-clock speedup over
+  serial NEURON at $B = 1000$.
+\end{enumerate}
+

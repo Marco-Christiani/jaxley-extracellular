@@ -1,0 +1,27 @@
+
+% =============================================================
+\section{Branchpoint elimination}\label{app:branchpoint-elimination}
+% =============================================================
+
+Jaxley's internal representation introduces branchpoint pseudo-nodes
+at cable junctions to enforce Kirchhoff's current law. Partitioning
+$G$ into real ($R$) and branchpoint ($B$) blocks gives
+\[
+  \begin{pmatrix} G_{RR} & G_{RB} \\ G_{BR} & G_{BB} \end{pmatrix}
+  \begin{pmatrix} \mathbf{v}_R \\ \mathbf{v}_B \end{pmatrix}
+  =
+  \begin{pmatrix} [G\mathbf{v}]_R \\ [G\mathbf{v}]_B \end{pmatrix}.
+\]
+Branchpoint nodes carry no membrane and no capacitance and so satisfy
+the instantaneous constraint $[G\mathbf{v}]_B = 0$, giving
+$\mathbf{v}_B = -G_{BB}^{-1}G_{BR}\mathbf{v}_R$ and the Schur
+complement
+\[
+  \tilde{G} \;=\; G_{RR} - G_{RB}\,G_{BB}^{-1}\,G_{BR}.
+\]
+The same operator applies to the extracellular forcing:
+$\tilde{G}\boldsymbol{\phi}$ gives the activating function at the real
+compartments. Our implementation delegates this assembly to a private
+Jaxley helper rather than reconstructing it from scratch, so the
+operator stays in sync with upstream solver changes.
+

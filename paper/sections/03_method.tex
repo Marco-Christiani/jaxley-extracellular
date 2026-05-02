@@ -1,0 +1,132 @@
+% =============================================================
+\section{Method}\label{sec:method}
+% =============================================================
+
+We adopt the notation of \cref{tab:notation}. The pipeline is:
+\begingroup
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\begin{equation}
+  I_e(t) \xrightarrow{\text{point source}} \boldsymbol{\Phi}
+  \xrightarrow{G\,\cdot} \mathbf{f}
+  \xrightarrow{\text{encode}} \mathbf{I}_{\text{ecs}}
+  \xrightarrow{\text{Jaxley}} \mathbf{v}(t).
+  \label{eq:pipeline}
+\end{equation}
+\endgroup
+
+\begin{table}[t]
+\centering
+\small
+\caption{Notation. Lengths in $\mu$m, currents in $\mu$A or nA, voltages
+in mV, time in ms, conductivity in S/m.}
+\label{tab:notation}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Symbol & Meaning & Units \\ \midrule
+$N$ & Number of compartments & --- \\
+$T$ & Number of timesteps & --- \\
+$\mathbf{x}_j,\,\mathbf{x}_e$ & Compartment center, electrode position & $\mu$m \\
+$d_{je}$ & $\lVert \mathbf{x}_j - \mathbf{x}_e \rVert$ & $\mu$m \\
+$I_e(t)$ & Electrode current (cathodic negative) & $\mu$A \\
+$\sigma$ & Extracellular conductivity & S/m \\
+$\phi_j(t),\,\boldsymbol{\Phi}$ & Extracellular potential, $\boldsymbol{\Phi}_{jt}=\phi_j(t)$ & mV \\
+$v_j(t),\,\mathbf{v}$ & Transmembrane voltage & mV \\
+$G$ & Axial voltage diffusion operator & $1/$ms \\
+$c_j,\,A_j$ & Specific capacitance, surface area & $\mu$F/cm$^2$,\,$\mu$m$^2$ \\
+$f_j(t) = [G\boldsymbol{\phi}(t)]_j$ & Activating function at compartment $j$ & mV/ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Extracellular potential from point sources.}
+For an electrode $e$ delivering $I_e(t)$ in a homogeneous, isotropic,
+infinite volume conductor of conductivity $\sigma$, superposition of
+monopoles gives
+\[
+  \phi_j(t) \;=\; \sum_e \frac{I_e(t)}{4\pi\sigma\,d_{je}}.
+\]
+Defining the transfer factor $h_{je} = 10^3 / (4\pi\sigma\,d_{je})$
+(in $\mathrm{mV}/\mu\mathrm{A}$, with the $10^3$ absorbing the unit
+conversion from $\mu$A and $\mu$m to mV) factorises space and time, so
+that for a single electrode
+$\boldsymbol{\Phi} = \mathbf{h}\,\mathbf{I}^\top \in \mathbb{R}^{N\times T}$.
+
+\paragraph{The discrete activating function.}
+Jaxley solves the spatially discretised cable equation
+\[
+  c_j A_j \frac{dv_j}{dt}
+  = \sum_{k\sim j} g_{jk}(v_k - v_j) - A_j I_{\text{ion}}(v_j,\mathbf{s}_j) + i_{\text{ext},j},
+\]
+where $g_{jk}$ is the raw axial conductance (units S) between
+compartments $j$ and $k$, $c_j$ is specific membrane capacitance, and
+$A_j$ is compartment surface area. Internally, Jaxley folds $c_j A_j$
+and unit conversions into a single voltage diffusion operator $G$ with
+entries $\tilde g_{jk} = g_{jk} / (c_j A_j)$ (in $1/$ms), so that
+$\dot{\mathbf{v}} = G\mathbf{v} + (\text{membrane terms})$. The
+sign pattern of $G$ is the weighted graph Laplacian:
+$G_{jk} = +\tilde g_{jk}$ for adjacent $k\neq j$,
+$G_{jj} = -\sum_{k\neq j} \tilde g_{jk}$, and zero otherwise. Rows sum
+to zero (current conservation), and $G$ is symmetric only when $c_j
+A_j$ is uniform across compartments.
+
+An extracellular field $\phi_j(t)$ shifts the axial driving force from
+$v_k - v_j$ to $(v_k+\phi_k)-(v_j+\phi_j)$; by linearity of $G$, this
+is equivalent to adding $G\boldsymbol{\phi}$ as a forcing term, the
+discrete analogue of Rattay's continuous activating function
+$\rho_a^{-1}\partial^2\phi/\partial x^2$~\cite{rattay1986analysis}.
+On a uniform straight cable with constant radius $a$ and compartment
+length $\Delta x$, this reduces to
+$[G\boldsymbol{\phi}]_j = \tilde g\,(\phi_{j-1} - 2\phi_j + \phi_{j+1})$
+with raw axial conductance $g = \pi a^2 / (2\rho_a\,\Delta x)$ and
+normalised entry $\tilde g = g/(c\,A)$, recovering the standard
+$[1,-2,1]/\Delta x^2$ stencil for $\partial^2\phi/\partial x^2$ with
+$O(\Delta x^2)$ truncation error (verified in \cref{sec:results-verify}).
+On branched morphologies, we delegate the elimination of the
+branchpoint pseudo-nodes that Jaxley introduces at cable junctions to
+its own solver routine, keeping the operator in sync with upstream
+solver changes (\cref{app:branchpoint-elimination}).
+
+\paragraph{Equivalent injected current.}
+The activating function $G\boldsymbol{\phi}$ has units mV/ms (a voltage
+rate), but Jaxley's stimulus API accepts current in nA. We encode the
+forcing as a per-compartment current $\mathbf{I}_{\text{ecs}}$ chosen
+so that, after Jaxley's internal current-to-voltage-rate conversion,
+the integrator sees exactly $G\boldsymbol{\phi}$. The unit-conversion
+algebra is given in \cref{app:equivalent-current}; the membrane
+capacitance and area factors that appear in the encoding cancel
+exactly in the round trip and are an artifact of working through the
+public API rather than modifying the solver.
+
+\paragraph{Implementation.}
+The pipeline of \cref{eq:pipeline} is realised as four small JAX-native
+modules wired together by an experiment object.
+\texttt{field.point\_source\_potential} computes $\boldsymbol{\Phi}$ from
+electrode positions, currents, and $\sigma$, with a $1\,\mu$m floor on
+$d_{je}$ to regularise the $1/d$ singularity when an electrode lands inside
+a compartment.
+\texttt{discretization.build\_voltage\_operator\_G} returns $G$ by
+delegating to Jaxley's \texttt{\_compute\_transition\_matrix} (the same
+routine the simulator uses for its backward-Euler step) and stripping
+branchpoint pseudo-nodes.
+\texttt{equivalent\_current.phi\_e\_to\_ecs\_nA} applies the encoding
+above.
+An \texttt{ECSExperiment} class precomputes $G$, $\mathbf{c}$, $\mathbf{A}$,
+and the compartment centres in its constructor, and exposes
+\texttt{simulate\_waveform} for a single integration and
+\texttt{simulate\_and\_extract} for one integration plus response-feature
+extraction.
+
+All operations are JAX-traceable: \texttt{jit}, \texttt{vmap},
+\texttt{grad}, and \texttt{jax.sharding.NamedSharding} compose with
+the pipeline without modification, so a one-dimensional device mesh is
+enough to data-parallelise the batch axis across a TPU pod-slice. Two
+implementation choices matter at scale and unlock the full-fidelity
+throughput regime of \cref{sec:res-throughput}: $G$ is stored as a
+sparse \texttt{BCOO} matrix to avoid the $(B,\,N,\,N)$ XLA broadcast
+that dense $G$ triggers under \texttt{vmap}, and
+\texttt{simulate\_waveform} forwards a \texttt{checkpoint\_lengths}
+factorisation of $T$ into \texttt{jx.integrate} so the backward-Euler
+scan rematerialises in $\sim\!\sqrt{T}$ chunks rather than holding the
+full $(T,\,B,\,N)$ voltage history in HBM.
+

@@ -1,0 +1,19 @@
+% =============================================================
+\section{Apical \texorpdfstring{$I_h$}{Ih} distance-dependent
+gradient}\label{app:ih-gradient}
+% =============================================================
+
+The \texttt{cADpyr229} apical $I_h$ conductance follows BBP's
+distance-dependent gradient
+\[
+  \bar{g}_{I_h}(d)
+    = \bigl(-0.8696 + 2.087\,e^{0.0031\,d}\bigr)
+      \cdot 8\!\times\!10^{-5}\;\mathrm{S/cm}^2,
+\]
+where $d$ is path distance from the soma centre in $\mu$m. We
+approximate $d$ with the Euclidean distance to the soma centre, which
+is close for roughly-vertical apical trees. Before the fix the
+resting-potential offset against NEURON was $-0.62\,$mV; the
+Euclidean approximation closes it to $-0.38\,$mV, and a path-distance
+traversal would close it further (\cref{sec:limitations}).
+

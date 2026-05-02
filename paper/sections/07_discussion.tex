@@ -1,0 +1,54 @@
+% =============================================================
+\section{Discussion}\label{sec:discussion}
+% =============================================================
+
+The pipeline introduced in this paper --- point-source field
+$\to$ activating function on Jaxley's $G$ $\to$ equivalent
+compartmental current $\to$ Jaxley integration --- runs through a
+single JAX trace and returns gradients for every parameter that enters
+it. The verification section establishes that the operator and the
+convergence behaviour are correct; the empirical section establishes
+that the simulator is fast enough to sweep the design space without
+surrogate approximation. Together they enable gradient-based search
+over waveform shape, the design problem this extension was built to
+support.
+
+\paragraph{Cross-validation against NEURON.}
+The three-step cross-check of \cref{sec:res-neuron} pairs analytical
+correctness on a uniform cable (\cref{sec:results-verify}) with
+external parity on a branched BBP Pyr cell. Single-compartment
+kinetics agree to $\pm 1$ spike and $\pm 0.04\,$mV AP peak across the
+BBP Pyr and PV channel sets; full-morphology Pyr matches NEURON to
+within one integration step on spike timing and $\sim\!0.3\,$mV in
+subthreshold RMSE; under extracellular stimulation, the same Pyr cell
+matches NEURON at four physical sites to a median per-site RMSE of
+$0.446\,$mV. The principal residuals are characterised: a
+$-0.38\,$mV resting-potential offset traced to our Euclidean-distance
+approximation of BBP's path-distance apical $I_h$ gradient
+(\cref{sec:cells-bbp}), and a compartmentalisation difference (Jaxley
+$700$ compartments vs.\ NEURON $1\,131$ segments under its
+\texttt{lambda}-rule discretisation) that surfaces as $\sim\!50\,\mu$s
+spike-timing drift and a $+0.74\,$mV suprathreshold AP-peak drift.
+The PV (LBC) cell does not run stably in Jaxley's default integrator
+at full morphology; this is a real limit on our cell-model coverage
+and we discuss it in \cref{sec:limitations}.
+
+\paragraph{Comparison with gradient-free pipelines.}
+Genetic search over waveforms
+\cite{grill2015model,wongsarnpigoon2010energy} returns no gradient
+direction for a candidate that is close to but short of an activation
+target; surrogate networks trained on NEURON outputs
+\cite{melissano2024efficient} introduce an approximation error that
+must be re-incurred whenever the underlying biophysical model
+changes. A single backward pass through \texttt{jx.integrate} returns
+$\partial \ell / \partial w(t)$ at every input timestep for any
+differentiable scalar objective $\ell$ and avoids both costs. As a
+sharper receipt than the position gradient of \cref{sec:res-grad}, an
+Adam loop on $\mathrm{MSE}(\hat{v}, v_\mathrm{target})$ on the full
+BBP Pyr morphology recovers \texttt{gNaTs2T} from a $-15\,\%$
+perturbation to within $+0.13\,\%$ in nine steps
+(\texttt{fit\_demo}). The point of this fit is end-to-end gradient
+flow on a realistic cell, not optimiser performance. A selectivity Pareto sweep against a non-target cell, or a
+charge-minimising waveform under a spike-elicitation constraint,
+follows the same template.
+

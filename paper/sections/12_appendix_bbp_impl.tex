@@ -1,0 +1,25 @@
+% =============================================================
+\section{BBP cell-model implementation notes}\label{app:bbp-implementation}
+% =============================================================
+
+Two implementation issues affect reproducibility of the BBP cell models
+in Jaxley but are unrelated to the paper's results.
+
+\paragraph{SWC soma conversion.} The BBP source morphologies represent
+the soma as a two-dimensional contour, which the SWC format cannot
+encode. The Neurolucida-to-SWC conversion tool emits soma points with
+$r = 0$, which Jaxley turns into degenerate zero-area compartments
+that produce NaN voltages at the first integration step. We patch the
+converted SWC files at load time so the soma points carry a
+non-degenerate radius.
+
+\paragraph{Calcium-channel insertion order.} Calcium signalling is
+sensitive to channel insertion order. The calcium Nernst reversal
+must be established before any calcium-carrying channel, which in
+turn must precede the calcium pump and the calcium-activated
+potassium channel.
+\texttt{cell\_factory.\_insert\_calcium\_chain} enforces
+\texttt{CaNernstReversal} $\to$ \texttt{CaHVA/CaLVA} $\to$
+\texttt{CaPump} $\to$ \texttt{SKE2}; out-of-order insertion produces
+uninitialised state references at integration time.
+

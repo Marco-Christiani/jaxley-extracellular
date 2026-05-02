@@ -1,0 +1,69 @@
+% =============================================================
+\section{Reproducibility}\label{app:reproducibility}
+% =============================================================
+
+Reproducibility in computational neuroscience and machine learning is
+widely flagged as a problem the field has not yet
+solved. The conventional answer --- a \texttt{requirements.txt} file, possibly
+inside a Dockerfile --- pins Python packages and a base
+operating-system image but leaves the C and C\nolinkurl{++} compilers,
+the CUDA toolchain, the Python interpreter build, and the cloud
+topology unspecified. Each of those layers can drift between machines
+or across time, and any drift can change the numerical results. We
+invested in a stack that closes those gaps; the result is that a
+reader who clones the repository can rebuild the entire compute
+environment, down to the system libraries that JAX and NEURON link
+against, with three commands.
+
+\paragraph{Python dependencies (\texttt{uv}).} Python-level
+dependencies are managed by \texttt{uv}, a Rust-implemented Python
+package manager that resolves direct and transitive dependencies and
+records every resulting wheel and its hash in a lockfile
+(\texttt{uv.lock}). Two machines that share that lockfile install
+exactly the same versions of every Python package, regardless of the
+order in which packages were added or the resolution order at install
+time. This is the same role \texttt{requirements.txt} or a Conda
+environment file plays, but with deterministic resolution and
+hash-pinned wheels.
+
+\paragraph{System environment (Nix).} The Python interpreter, CUDA
+runtime, JAX, the C compiler that built any of these, and command-line
+tooling such as \texttt{git}, \texttt{cmake}, and \texttt{pre-commit}
+are specified in a Nix flake (\texttt{flake.nix}). Nix is a
+content-addressed package manager: every binary it produces is
+identified by a hash of its full build graph, including the build-time
+dependencies of its build-time dependencies, recursively. Two machines
+that evaluate the same flake produce the same closure of binaries
+bit-for-bit. Where a Dockerfile freezes a base image but leaves
+\texttt{apt-get install} non-deterministic and dependent on whichever
+mirror is reachable on the day of the build, the Nix flake freezes the
+entire transitive build graph.
+
+\paragraph{Cloud infrastructure (OpenTofu).} The cloud-side compute
+environment --- the TPU pod-slice used for the throughput and grid
+sweeps, the Cloud SQL Postgres database used by the experiment
+tracker, the Google Cloud Storage bucket used for artifact storage ---
+is specified declaratively as OpenTofu (a community fork of Terraform)
+configuration in \texttt{infra/tofu/}. One command
+(\texttt{tofu apply}) brings the entire topology up; another
+(\texttt{tofu destroy}) tears it down. Because the configuration lives
+in the repository, reproducing the cloud environment does not require
+following a chain of manual console clicks.
+
+\paragraph{How to reproduce.} A reader entering the Nix shell gets a
+deterministic Python and CUDA environment, optionally provisions the
+cloud-side compute via OpenTofu for TPU-scale runs, and regenerates
+every figure from the curated artifact distribution. The project
+\texttt{README} carries the exact commands and tracks the
+artifact-set URL; we leave it as the canonical entry point so that
+the procedure stays in sync with the code rather than the
+publication. A reader who only wants to reproduce the figures from
+the pinned data does not need to run any TPU-scale workload.
+
+\paragraph{Artifact set.} The curated data backing every figure ---
+parity \texttt{.npz} files, the strength--duration and biphasic-grid
+Zarr stores, the throughput sweeps, and the gradient receipt ---
+totals a few megabytes and is published as a separate artifact
+distribution rather than committed to the source repository, available
+at \url{https://github.com/Marco-Christiani/jaxley-extracellular/releases/tag/paper-v0.1}.
+

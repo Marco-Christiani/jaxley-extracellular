@@ -1,0 +1,45 @@
+% =============================================================
+\section{Cell models}\label{sec:cells}
+% =============================================================
+
+\subsection{Hodgkin--Huxley straight cable}\label{sec:cells-hh}
+
+The verification studies of \cref{sec:results-verify} and the pilot
+strength--duration sweep of \cref{sec:res-sd} use a uniform
+Hodgkin--Huxley cable. Defaults reproduce the configuration set by
+\texttt{experiment.make\_hh\_cable\_experiment}: $50$ compartments
+along a $1.25\,$mm cable, fibre radius $10\,\mu$m, axial resistivity
+$\rho_a = 100\,\Omega\cdot$cm, with the standard Jaxley HH channel set on
+every compartment. A single electrode sits $50\,\mu$m above the first
+compartment in a medium of conductivity $\sigma = 0.3\,$S/m, the typical
+value for cortical grey matter.
+
+\subsection{BBP L2/3 cells (cADpyr229, cNAC187)}\label{sec:cells-bbp}
+
+For morphologically detailed simulations we adapt two L2/3 cell models
+from the Blue Brain Project~\cite{markram2015reconstruction}: the
+regular-spiking pyramidal cell
+\texttt{L23\_PC\_cADpyr229} and the parvalbumin-expressing basket cell
+\texttt{L23\_LBC\_cNAC187}. Channel kinetics are reused from
+\texttt{jaxley\_mech.channels.l5pc}, which provides Jaxley-compatible
+implementations of the BBP L5 channel set; conductances and passive
+parameters are read from the BBP biophysics specification and applied per
+section group (soma, axon, apical, basal).
+
+Two implementation details affect reproducibility but do not bear on
+the paper's results: the SWC conversion of the BBP soma contour, and
+the calcium-channel insertion order in Jaxley. Both are documented in
+\cref{app:bbp-implementation}.
+
+A third detail is needed for NEURON parity. The \texttt{cADpyr229}
+apical $I_h$ conductance follows a distance-dependent gradient
+specified in BBP's biophysics file with a path-distance argument; we
+apply it under a Euclidean-distance approximation to the soma centre,
+which closes a $0.6\,$mV resting-potential offset that a uniform
+somatic value otherwise leaves (closed-form gradient and
+implementation in \cref{app:ih-gradient}). Long SWC branches are
+subdivided at load time (\texttt{max\_branch\_len}$\,=\,100\,\mu$m) so
+the compartment count tracks what NEURON's \texttt{geom\_nseg} routine
+produces for the same morphology; we found this necessary for
+spike-timing parity (\cref{sec:discussion}).
+
