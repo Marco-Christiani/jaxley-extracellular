@@ -14,19 +14,20 @@ from jaxley_extracellular.extracellular.typing_helpers import (
     ECSParameters,
 )
 
-# ---------------------------------------------------------------------------
 # Coordinate preparation
-# ---------------------------------------------------------------------------
 
 
 def ensure_compartment_centers(module: Any) -> None:
     """Populate ``module.nodes[["x","y","z"]]`` if absent or NaN.
 
-    Calls ``compute_xyz()`` if the raw ``xyzr`` traces contain NaN, then
-    calls ``compute_compartment_centers()`` to interpolate midpoints.
+    Calls ``compute_xyz()`` if the raw ``xyzr`` traces contain NaN,
+    then calls ``compute_compartment_centers()`` to interpolate
+    midpoints.
 
-    Args:
-        module: A Jaxley module (top-level or view).  Mutates in-place.
+    Parameters
+    ----------
+    module : jx.Module
+        A Jaxley module (top-level or view). Mutated in place.
     """
     nodes = module.base.nodes
     cols_present = all(c in nodes.columns for c in ("x", "y", "z"))
@@ -41,16 +42,25 @@ def ensure_compartment_centers(module: Any) -> None:
 
 
 def get_compartment_xyz(module: Any) -> np.ndarray:
-    """Return (Ncomp, 3) compartment-centre coordinates in um.
+    """Return compartment-centre coordinates in um.
 
-    Raises if coordinates have not yet been populated, make sure to
-     call ``ensure_compartment_centers`` first.
+    Parameters
+    ----------
+    module : jx.Module
+        Top-level Jaxley module. Call
+        :func:`ensure_compartment_centers` first if coordinates have
+        not yet been populated.
 
-    Args:
-        module: Top-level Jaxley module.
+    Returns
+    -------
+    numpy.ndarray, shape ``(Ncomp, 3)``
+        Compartment-centre coordinates in um, ordered by
+        ``module.base._internal_node_inds``.
 
-    Returns:
-        numpy array (Ncomp, 3), ordered by ``_internal_node_inds``.
+    Raises
+    ------
+    RuntimeError
+        If coordinates are not yet populated on ``module.base.nodes``.
     """
     base = module.base
     idx = np.asarray(base._internal_node_inds)
@@ -65,28 +75,35 @@ def get_compartment_xyz(module: Any) -> np.ndarray:
     return cast(np.ndarray, nodes.loc[idx, ["x", "y", "z"]].to_numpy(dtype=float))
 
 
-# ---------------------------------------------------------------------------
 # Full ECS pipeline
-# ---------------------------------------------------------------------------
 
 
 def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
-    """Full pipeline: phi_e [mV] -> i_ecs [nA] for every compartment and timestep.
+    """Convert per-compartment phi_e to equivalent stimulus current in nA.
 
-    Steps:
-        1. ``module.to_jax()`` + ``get_all_parameters`` to obtain G, cm, area.
-        2. Build voltage operator G via ``build_voltage_operator_G``.
-        3. ``phi_e_to_ecs_nA`` to get the equivalent injected current.
+    Wraps the three-step pipeline:
 
-    Args:
-        module:     Top-level Jaxley module (``module.base is module``).
-                    *After* ``ensure_compartment_centers`` has been called if
-                    coordinates are needed upstream.
-        phi_e_mV:  (Ncomp, T) extracellular potential at compartment centres
-                   in mV.  Ncomp must equal ``len(module.base._internal_node_inds)``.
+    1. Call ``module.to_jax()`` and ``get_all_parameters`` to obtain
+       ``G``, ``cm``, and ``area``.
+    2. Build the voltage operator ``G`` via
+       :func:`build_voltage_operator_G`.
+    3. Apply :func:`phi_e_to_ecs_nA` to obtain the equivalent injected
+       current.
 
-    Returns:
-        i_ecs_nA: (Ncomp, T) equivalent stimulus current in nA.
+    Parameters
+    ----------
+    module : jx.Module
+        Top-level Jaxley module (``module.base is module``). Call
+        :func:`ensure_compartment_centers` first if upstream code
+        depends on populated coordinates.
+    phi_e_mV : Array, shape ``(Ncomp, T)``
+        Extracellular potential at compartment centres, in mV. ``Ncomp``
+        must equal ``len(module.base._internal_node_inds)``.
+
+    Returns
+    -------
+    Array, shape ``(Ncomp, T)``
+        Equivalent stimulus current in nA.
     """
     module.to_jax()
     params: ECSParameters = module.get_all_parameters(pstate=[])
@@ -100,22 +117,27 @@ def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
     return phi_e_to_ecs_nA(phi_e_mV, G, cm, area)  # (Ncomp, T) nA
 
 
-# ---------------------------------------------------------------------------
 # data_stimulate packaging
-# ---------------------------------------------------------------------------
 
 
 def package_data_stimuli(module: Any, i_nA: Array) -> DataStimuli:
-    """Wrap ``i_nA`` into the ``data_stimuli`` tuple expected by ``jx.integrate``.
+    """Wrap ``i_nA`` into the ``data_stimuli`` tuple for ``jx.integrate``.
 
-    Equivalent to calling ``module.data_stimulate(i_nA, data_stimuli=None)``.
+    Equivalent to calling
+    ``module.data_stimulate(i_nA, data_stimuli=None)``.
 
-    Args:
-        module: Top-level Jaxley module.
-        i_nA:   (Ncomp, T) stimulus current in nA.
+    Parameters
+    ----------
+    module : jx.Module
+        Top-level Jaxley module.
+    i_nA : Array, shape ``(Ncomp, T)``
+        Per-compartment stimulus current in nA.
 
-    Returns:
-        data_stimuli tuple for passing into ``jx.integrate``.
+    Returns
+    -------
+    DataStimuli
+        Tuple in the form expected by ``jx.integrate``'s
+        ``data_stimuli`` argument.
     """
     # Jaxley returns a heterogeneous tuple consumed by jx.integrate as-is.
     return cast(DataStimuli, module.data_stimulate(i_nA, data_stimuli=None))

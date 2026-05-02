@@ -30,21 +30,36 @@ def point_source_potential(
     Multiple electrodes are handled via superposition: the total potential
     is the sum of independent point-source contributions.
 
-    All arithmetic is performed in JAX so that ``electrode_positions``,
+    All arithmetic is performed in JAX, so ``electrode_positions``,
     ``electrode_currents``, and ``sigma`` can be JAX-traced for
     gradient-based optimisation.
 
-    Args:
-        comp_xyz: (Ncomp, 3) compartment-centre coordinates in um.
-        electrode_positions: (N_elec, 3) electrode positions in um.
-        electrode_currents: (N_elec, T) electrode current waveforms in uA.
-        sigma: Extracellular conductivity in S/m.  Typical brain tissue ~0.3 S/m.
-        min_distance_um: Minimum distance floor in um to prevent division by zero
-                         when a compartment centre coincides with an electrode
-                         (default 1 um).
+    Parameters
+    ----------
+    comp_xyz : array_like, shape ``(Ncomp, 3)``
+        Compartment-centre coordinates in um.
+    electrode_positions : array_like, shape ``(N_elec, 3)``
+        Electrode positions in um.
+    electrode_currents : Array, shape ``(N_elec, T)``
+        Electrode current waveforms in uA.
+    sigma : float or Array
+        Extracellular conductivity in S/m. Typical brain tissue is
+        ~0.3 S/m.
+    min_distance_um : float, optional
+        Minimum distance floor in um to prevent division by zero when a
+        compartment centre coincides with an electrode (default 1 um).
 
-    Returns:
-        phi_e: jax.Array of shape (Ncomp, T) in mV -- summed over all electrodes.
+    Returns
+    -------
+    Array, shape ``(Ncomp, T)``
+        Extracellular potential at each compartment centre, in mV,
+        summed over all electrodes.
+
+    Raises
+    ------
+    ValueError
+        If ``comp_xyz``, ``electrode_positions``, or
+        ``electrode_currents`` have the wrong shape.
     """
     comp_xyz_j: Array = jnp.asarray(comp_xyz)  # (Ncomp, 3)
     positions_j: Array = jnp.asarray(electrode_positions)  # (N_elec, 3)

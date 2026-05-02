@@ -14,9 +14,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 from jaxtyping import Array
 
-# ---------------------------------------------------------------------------
 # Core pulse train generator
-# ---------------------------------------------------------------------------
 
 
 def make_pulse_train(
@@ -79,9 +77,7 @@ def make_pulse_train(
     return w
 
 
-# ---------------------------------------------------------------------------
 # Single-pulse convenience wrappers
-# ---------------------------------------------------------------------------
 
 
 def make_monophasic_pulse(
@@ -135,9 +131,7 @@ def make_biphasic_pulse(
     )
 
 
-# ---------------------------------------------------------------------------
 # Batch grid for vmap sweeps
-# ---------------------------------------------------------------------------
 
 
 def make_biphasic_grid(

@@ -17,21 +17,26 @@ from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 
 def build_voltage_operator_G(module: Any, params: ECSParameters) -> Array:
-    """Return the dense voltage diffusion operator G [1/ms], shape (Ncomp, Ncomp).
+    """Build the dense voltage diffusion operator ``G``.
 
     Delegates to Jaxley's own ``_compute_transition_matrix`` and strips
     branchpoint pseudo-nodes, exactly as Jaxley does in
     ``build_exp_euler_transition_matrix``.
 
-    Args:
-        module: A top-level Jaxley module (Compartment, Branch, Cell, Network)
-                *after* calling ``module.to_jax()``.  Must NOT be a view
-                (i.e. ``module.base is module``).
-        params: Output of ``module.get_all_parameters(pstate=[])``.
+    Parameters
+    ----------
+    module : jx.Module
+        A top-level Jaxley module (Compartment, Branch, Cell, Network)
+        after calling ``module.to_jax()``. Must not be a view
+        (``module.base is module``).
+    params : ECSParameters
+        Output of ``module.get_all_parameters(pstate=[])``.
 
-    Returns:
-        G: jax.Array of shape (Ncomp, Ncomp), where
-           Ncomp = len(module.base._internal_node_inds).
+    Returns
+    -------
+    Array, shape ``(Ncomp, Ncomp)``
+        Voltage diffusion operator in 1/ms, where
+        ``Ncomp = len(module.base._internal_node_inds)``.
     """
     axial_conds_v: Array = params["axial_conductances"]["v"]  # (C,)
     base = module.base
