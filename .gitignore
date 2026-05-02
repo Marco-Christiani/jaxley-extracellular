@@ -242,3 +242,6 @@ paper/*.out
 paper/*.pdf
 paper/*.synctex.gz
 
+# upstream neurips sample template (style file is tracked, sample is reference only)
+paper/neurips_2024.tex
+
