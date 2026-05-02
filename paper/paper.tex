@@ -67,11 +67,8 @@ electrodes placed near the target tissue. Therapeutic outcome depends on a
 small set of waveform parameters --- pulse width, shape, amplitude,
 frequency, polarity --- whose effect on neural activation is nonlinear and
 sensitive to local geometry. In present clinical practice these parameters
-are tuned by hand, guided by symptom observation across patient visits
-\todo{cite a clinical-tuning reference for DBS or SCS, e.g.\ Kuncel \&
-Grill 2004 (Clin Neurophysiol) on selection of stimulus parameters for
-DBS, or Koeglsperger et al.\ 2019 (J Neurol) on DBS programming
-practice}. Computational design has been explored as an
+are tuned by hand, guided by symptom observation across patient visits.
+Computational design has been explored as an
 alternative, but the simulators in widespread use are slow when the goal is
 to sweep the design space.
 
@@ -131,10 +128,8 @@ satisfies Laplace's equation away from sources. Modelling each electrode
 contact as a point source in an infinite, homogeneous, isotropic
 conductor of conductivity $\sigma$ gives the closed-form monopole
 $\phi(\mathbf{x}) = I / (4\pi\sigma\,d)$, with $d$ the source-to-field
-distance~\cite{10.1093/acprof:oso/9780195058239.001.0001,10.1093/acprof:oso/9780195050387.001.0001}
-\todo{also consider citing Bossetti, Birdno \& Grill 2008 (J Neural Eng)
-for the quasi-static argument specifically in neural-stimulation
-regimes}. Multiple electrodes follow by superposition. We use this model throughout; the homogeneity and isotropy
+distance~\cite{10.1093/acprof:oso/9780195058239.001.0001,10.1093/acprof:oso/9780195050387.001.0001}.
+Multiple electrodes follow by superposition. We use this model throughout; the homogeneity and isotropy
 assumptions are limitations we return to in \cref{sec:limitations}.
 
 \subsection{The activating function}
@@ -258,7 +253,7 @@ so that, after Jaxley's internal current-to-voltage-rate conversion,
 the integrator sees exactly $G\boldsymbol{\phi}$. The unit-conversion
 algebra is given in \cref{app:equivalent-current}; the membrane
 capacitance and area factors that appear in the encoding cancel
-exactly in the round trip and are an artefact of working through the
+exactly in the round trip and are an artifact of working through the
 public API rather than modifying the solver.
 
 \paragraph{Implementation.}
@@ -307,8 +302,7 @@ along a $1.25\,$mm cable, fibre radius $10\,\mu$m, axial resistivity
 $\rho_a = 100\,\Omega\cdot$cm, with the standard Jaxley HH channel set on
 every compartment. A single electrode sits $50\,\mu$m above the first
 compartment in a medium of conductivity $\sigma = 0.3\,$S/m, the typical
-value for cortical grey matter~\todo{cite a tissue-conductivity reference
-such as Logothetis 2007 or Ranck 1963}.
+value for cortical grey matter.
 
 \subsection{BBP L2/3 cells (cADpyr229, cNAC187)}\label{sec:cells-bbp}
 
@@ -400,7 +394,7 @@ pulse from electrode $(0, 100, 0)\,\mu$m is
   = (\,0.330,\,-0.371,\,-0.243\,)\;\mathrm{mV}/\mu\mathrm{m},
 \]
 returned in $37.6\,$s on a v5e single chip. The full receipt is part
-of the artefact set described in the reproducibility appendix.
+of the artifact set described in the reproducibility appendix.
 
 % =============================================================
 \section{Empirical results}\label{sec:results-empirical}
@@ -415,7 +409,7 @@ the cell respond, given the same charge per pulse? And does the
 infrastructure scale to design-space sweeps that NEURON cannot run? We
 close with a gradient receipt that motivates the next step --- direct
 optimisation of the waveform itself. All runs reported below are part
-of the curated artefact set described in the reproducibility appendix;
+of the curated artifact set described in the reproducibility appendix;
 wall-clock figures are on a single v5e chip unless stated otherwise.
 
 \subsection{Validation against NEURON}\label{sec:res-neuron}
@@ -570,8 +564,7 @@ delivered charge per pulse, where on the $(T_p, T_n)$ plane does the
 cell actually respond? A symmetric charge-balanced biphasic pulse has
 two equal-and-opposite phases of equal duration; a clinical waveform
 almost always has unequal phase durations (longer-low cathodic +
-short-high anodic, or vice versa)~\todo{cite Wongsarnpigoon \& Grill
-2010 or Foutz \& McIntyre 2010 on asymmetric biphasic shapes}. To characterise
+short-high anodic, or vice versa)~\cite{wongsarnpigoon2010energy}. To characterise
 this region of waveform space, we hold the electrode at $d=100\,\mu$m
 (the cleanest distance from the strength--duration sweep) and grid four
 parameters: anodic phase duration $T_p$, cathodic phase duration $T_n$,
@@ -873,8 +866,7 @@ The same operator applies to the extracellular forcing:
 $\tilde{G}\boldsymbol{\phi}$ gives the activating function at the real
 compartments. Our implementation delegates this assembly to a private
 Jaxley helper rather than reconstructing it from scratch, so the
-operator stays in sync with upstream solver changes~\todo{cite the
-specific Jaxley function once finalized; note the version dependency}.
+operator stays in sync with upstream solver changes.
 
 % =============================================================
 \section{Equivalent-current encoding}\label{app:equivalent-current}
@@ -892,7 +884,7 @@ conversion, we encode
     c_j \cdot [G\boldsymbol{\phi}(t)]_j \cdot \frac{A_j}{10^5}.
 \]
 The $c_j$ and $A_j$ factors cancel in the round trip; they are an
-encoding artefact of using the public API rather than modifying the
+encoding artifact of using the public API rather than modifying the
 solver. In matrix form,
 \[
   \mathbf{I}_{\text{ecs}} \;=\;
@@ -951,9 +943,7 @@ traversal would close it further (\cref{sec:limitations}).
 
 Reproducibility in computational neuroscience and machine learning is
 widely flagged as a problem the field has not yet
-solved~\todo{cite a reproducibility-crisis review (Pineau et al.\ 2021
-NeurIPS reproducibility checklist, or Stodden et al.\ 2016 Science)}.
-The conventional answer --- a \texttt{requirements.txt} file, possibly
+solved. The conventional answer --- a \texttt{requirements.txt} file, possibly
 inside a Dockerfile --- pins Python packages and a base
 operating-system image but leaves the C and C\nolinkurl{++} compilers,
 the CUDA toolchain, the Python interpreter build, and the cloud
@@ -991,7 +981,7 @@ entire transitive build graph.
 \paragraph{Cloud infrastructure (OpenTofu).} The cloud-side compute
 environment --- the TPU pod-slice used for the throughput and grid
 sweeps, the Cloud SQL Postgres database used by the experiment
-tracker, the Google Cloud Storage bucket used for artefact storage ---
+tracker, the Google Cloud Storage bucket used for artifact storage ---
 is specified declaratively as OpenTofu (a community fork of Terraform)
 configuration in \texttt{infra/tofu/}. One command
 (\texttt{tofu apply}) brings the entire topology up; another
@@ -1002,23 +992,20 @@ following a chain of manual console clicks.
 \paragraph{How to reproduce.} A reader entering the Nix shell gets a
 deterministic Python and CUDA environment, optionally provisions the
 cloud-side compute via OpenTofu for TPU-scale runs, and regenerates
-every figure from the curated artefact distribution. The project
+every figure from the curated artifact distribution. The project
 \texttt{README} carries the exact commands and tracks the
-artefact-set URL; we leave it as the canonical entry point so that
+artifact-set URL; we leave it as the canonical entry point so that
 the procedure stays in sync with the code rather than the
 publication. A reader who only wants to reproduce the figures from
 the pinned data does not need to run any TPU-scale workload.
 
-\paragraph{Artefact set.} The curated data backing every figure ---
+\paragraph{Artifact set.} The curated data backing every figure ---
 parity \texttt{.npz} files, the strength--duration and biphasic-grid
 Zarr stores, the throughput sweeps, and the gradient receipt ---
-totals a few megabytes and is published as a separate artefact
+totals a few megabytes and is published as a separate artifact
 distribution rather than committed to the source repository.
-\todo{Hosting decision pending: pick between (a) a Zenodo or OSF
-deposit with a DOI, (b) a GitHub release attached to the project
-repository, or (c) ``available on request'' if neither is committed
-before submission. Replace this note with the URL or contact line
-once chosen.}
+\todo{ARTIFACT URL: replace with the GitHub release asset URL after
+publishing tag \texttt{paper-v0.1}.}
 
 % =============================================================
 % References

@@ -1,6 +1,6 @@
-"""Generate the paper figures from locked result artefacts.
+"""Generate the paper figures from locked result artifacts.
 
-Consumes the curated artefact set under ``results/paper_package/data/``
+Consumes the curated artifact set under ``results/paper_package/data/``
 (pinned Apr 27--29) rather than top-level ``results/*.npz``, which can be
 overwritten by smoke tests or re-runs. Outputs land in ``paper/figures/``
 next to ``paper.tex`` so the figure pipeline is self-contained under
@@ -759,6 +759,8 @@ def make_gradient_arrow(
         showarrow=False,
         xanchor="left",
         yanchor="bottom",
+        xshift=14,
+        yshift=10,
         bgcolor="rgba(255,255,255,0.85)",
         bordercolor="#888",
         borderwidth=1,

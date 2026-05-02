@@ -231,7 +231,7 @@ results
 mlruns/
 mlartifacts/
 
-# LaTeX build artefacts
+# latex build artifacts
 paper/*.aux
 paper/*.bbl
 paper/*.blg
