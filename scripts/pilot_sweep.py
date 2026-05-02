@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Pilot sweep: strength-duration curves for monophasic and biphasic pulses.
+"""Legacy pilot sweep: strength-duration curves for monophasic and biphasic pulses.
+
+This script predates ``scripts/sweep.py`` and is kept as a smaller reference
+implementation. The main sweep runner now lives in ``scripts/sweep.py`` and
+adds geometry/frequency sweeps, resume support, Zarr output, sharding, and
+tracking.
 
 Sweeps pulse width x polarity x waveform shape (mono/biphasic), finding
 activation threshold via vectorised binary search at each condition.
@@ -26,9 +31,7 @@ import numpy as np
 
 from jaxley_extracellular.extracellular.experiment import make_hh_cable_experiment
 
-# -----------------------------------------------------------------------
 # Sweep parameters
-# -----------------------------------------------------------------------
 
 PULSE_WIDTHS_MS = np.array([0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.5, 2.0])
 ELECTRODE_DISTANCES_UM = np.array([50.0])  # can extend later
@@ -36,7 +39,7 @@ WAVEFORM_TYPES = ["monophasic_cathodic", "monophasic_anodic", "biphasic_cathodic
 
 # Binary search
 AMP_LO = 0.0
-AMP_HI = 5000.0  # uA -- wide bracket to cover all conditions
+AMP_HI = 5000.0  # uA, wide bracket to cover all conditions
 N_ITER = 14  # precision: 5000/2^14 ~= 0.3 uA
 
 # Model
@@ -49,9 +52,7 @@ SIGMA = 0.3
 RECORD_COMP = 0
 
 
-# -----------------------------------------------------------------------
 # Waveform factories (vmap-compatible, using masks for traced pw_steps)
-# -----------------------------------------------------------------------
 
 
 class SweepRow(TypedDict):
@@ -93,9 +94,7 @@ WAVEFORM_FACTORIES: dict[str, WaveformFactory] = {
 }
 
 
-# -----------------------------------------------------------------------
 # Batched binary search over pulse widths
-# -----------------------------------------------------------------------
 
 
 def _find_thresholds_batched(
@@ -143,9 +142,7 @@ def _find_thresholds_batched(
     return (lo + hi) / 2.0
 
 
-# -----------------------------------------------------------------------
 # Main sweep
-# -----------------------------------------------------------------------
 
 
 def run_sweep(outdir: Path) -> None:
