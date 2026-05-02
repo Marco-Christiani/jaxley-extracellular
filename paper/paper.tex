@@ -5,9 +5,9 @@
 % guarded by \iflong ... \fi; the default build is the long version.
 % A short companion entry point (paper_short.tex) overrides \longfalse.
 
-\documentclass[11pt]{article}
+\documentclass{article}
 
-\usepackage[margin=1in]{geometry}
+\usepackage[preprint]{neurips_2024}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage{graphicx}
@@ -39,10 +39,13 @@
 \newcommand{\sketch}[1]{\textcolor{gray}{\textit{(sketch: #1)}}}
 \newcommand{\fig}[1]{\textcolor{blue}{\textbf{[FIG: #1]}}}
 
-\title{Differentiable Extracellular Stimulation\\
+\title{Differentiable Extracellular Stimulation
 of Compartmental Neuron Models}
-\author{Marco Christiani\\Carnegie Mellon University\\\texttt{marcochr@andrew.cmu.edu}}
-\date{\today}
+\author{%
+  Marco Christiani \\
+  Carnegie Mellon University \\
+  \texttt{marcochr@andrew.cmu.edu}
+}
 
 \graphicspath{{./}{figures/}}
 
