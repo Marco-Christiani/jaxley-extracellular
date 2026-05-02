@@ -44,13 +44,16 @@ with the pipeline without modification. We verify the operator against
 Jaxley's internal voltage vector field to $\sim\!10^{-13}$ relative error in
 float64 and recover $O(\Delta x^2)$ convergence to the analytical activating
 function on a uniform straight cable. We then exercise the pipeline on
-Hodgkin--Huxley cables and on Blue Brain Project L2/3 pyramidal and
-basket-cell morphologies, validate against NEURON in a three-step cross-check that
-reaches a median per-site voltage RMSE of $0.446\,$mV on the
-full-morphology Pyr cell under extracellular stimulation, sweep
-stimulation parameters across pulse width, polarity, distance, and
-frequency on a four-chip TPU pod-slice, and report a $\sim\!34\times$
-wall-clock speedup over serial NEURON on the same Pyr cell. Gradients
+Hodgkin--Huxley cables and on the full-morphology Blue Brain Project
+L2/3 pyramidal cell, with the parvalbumin basket cell included only at
+the single-compartment channel-kinetics level since its full
+morphology does not run stably in our setup. We validate against
+NEURON in a three-step cross-check that reaches a median per-site
+voltage RMSE of $0.446\,$mV on the full-morphology Pyr cell under
+extracellular stimulation, sweep stimulation parameters across pulse
+width, polarity, distance, and frequency on a four-chip TPU pod-slice,
+and report a $\sim\!34\times$ wall-clock speedup over serial
+single-core NEURON on the same Pyr cell. Gradients
 of voltage observables flow through the full simulator with respect to
 electrode position, waveform parameters, and tissue conductivity,
 placing direct waveform optimisation within reach of the same compute
@@ -74,8 +77,8 @@ to sweep the design space.
 
 The standard pipeline pairs a volume-conductor field model with the NEURON
 simulator~\cite{Hines2001NeuronAT} to integrate the resulting
-transmembrane response. NEURON is CPU-bound and integrates simulations
-serially, so existing studies that search for energy-efficient or selective
+transmembrane response. The default BBP NEURON workflow runs serially
+on a single CPU core, so existing studies that search for energy-efficient or selective
 waveforms have either used genetic
 algorithms~\cite{grill2015model,wongsarnpigoon2010energy} or trained
 surrogate neural networks on NEURON
@@ -110,7 +113,7 @@ through the public stimulus API.
   each step.
   \item TPU-scale empirical results on the BBP L2/3 pyramidal cell:
   a strength--duration sweep across distance and polarity, a
-  $630$-configuration charge-balanced biphasic grid, and a
+  charge-balanced biphasic grid of $315$ valid configurations, and a
   throughput--scaling curve at $\sim\!34\times$ wall-clock speedup over
   serial NEURON at $B = 1000$.
 \end{enumerate}
@@ -219,15 +222,20 @@ $\boldsymbol{\Phi} = \mathbf{h}\,\mathbf{I}^\top \in \mathbb{R}^{N\times T}$.
 \paragraph{The discrete activating function.}
 Jaxley solves the spatially discretised cable equation
 \[
-  c_j \frac{dv_j}{dt}
-  = \sum_{k\sim j} g_{jk}(v_k - v_j) - I_{\text{ion}}(v_j,\mathbf{s}_j) + i_{\text{ext},j}.
+  c_j A_j \frac{dv_j}{dt}
+  = \sum_{k\sim j} g_{jk}(v_k - v_j) - A_j I_{\text{ion}}(v_j,\mathbf{s}_j) + i_{\text{ext},j},
 \]
-Internally, Jaxley pre-normalises axial coupling by $c_j$ and area into a
-voltage diffusion operator $G$ with units $1/$ms, so that
-$\dot{\mathbf{v}} = G\mathbf{v} + (\text{membrane terms})$. The entries of
-$G$ form a weighted graph Laplacian: $G_{jk} = +g_{jk}$ for adjacent $k\neq j$,
-$G_{jj} = -\sum_{k\neq j} g_{jk}$, and zero otherwise. Rows sum to zero
-(current conservation) and $G$ is symmetric for uniform parameters.
+where $g_{jk}$ is the raw axial conductance (units S) between
+compartments $j$ and $k$, $c_j$ is specific membrane capacitance, and
+$A_j$ is compartment surface area. Internally, Jaxley folds $c_j A_j$
+and unit conversions into a single voltage diffusion operator $G$ with
+entries $\tilde g_{jk} = g_{jk} / (c_j A_j)$ (in $1/$ms), so that
+$\dot{\mathbf{v}} = G\mathbf{v} + (\text{membrane terms})$. The
+sign pattern of $G$ is the weighted graph Laplacian:
+$G_{jk} = +\tilde g_{jk}$ for adjacent $k\neq j$,
+$G_{jj} = -\sum_{k\neq j} \tilde g_{jk}$, and zero otherwise. Rows sum
+to zero (current conservation), and $G$ is symmetric only when $c_j
+A_j$ is uniform across compartments.
 
 An extracellular field $\phi_j(t)$ shifts the axial driving force from
 $v_k - v_j$ to $(v_k+\phi_k)-(v_j+\phi_j)$; by linearity of $G$, this
@@ -236,8 +244,9 @@ discrete analogue of Rattay's continuous activating function
 $\rho_a^{-1}\partial^2\phi/\partial x^2$~\cite{rattay1986analysis}.
 On a uniform straight cable with constant radius $a$ and compartment
 length $\Delta x$, this reduces to
-$[G\boldsymbol{\phi}]_j = g\,(\phi_{j-1} - 2\phi_j + \phi_{j+1})$ with
-$g = \pi a^2 / (2\rho_a\,\Delta x)$, the standard
+$[G\boldsymbol{\phi}]_j = \tilde g\,(\phi_{j-1} - 2\phi_j + \phi_{j+1})$
+with raw axial conductance $g = \pi a^2 / (2\rho_a\,\Delta x)$ and
+normalised entry $\tilde g = g/(c\,A)$, recovering the standard
 $[1,-2,1]/\Delta x^2$ stencil for $\partial^2\phi/\partial x^2$ with
 $O(\Delta x^2)$ truncation error (verified in \cref{sec:results-verify}).
 On branched morphologies, we delegate the elimination of the
@@ -328,7 +337,7 @@ apply it under a Euclidean-distance approximation to the soma centre,
 which closes a $0.6\,$mV resting-potential offset that a uniform
 somatic value otherwise leaves (closed-form gradient and
 implementation in \cref{app:ih-gradient}). Long SWC branches are
-subdivided at load time (\texttt{max\_branch\_len}$\,=\,50\,\mu$m) so
+subdivided at load time (\texttt{max\_branch\_len}$\,=\,100\,\mu$m) so
 the compartment count tracks what NEURON's \texttt{geom\_nseg} routine
 produces for the same morphology; we found this necessary for
 spike-timing parity (\cref{sec:discussion}).
@@ -1003,9 +1012,8 @@ the pinned data does not need to run any TPU-scale workload.
 parity \texttt{.npz} files, the strength--duration and biphasic-grid
 Zarr stores, the throughput sweeps, and the gradient receipt ---
 totals a few megabytes and is published as a separate artifact
-distribution rather than committed to the source repository.
-\todo{ARTIFACT URL: replace with the GitHub release asset URL after
-publishing tag \texttt{paper-v0.1}.}
+distribution rather than committed to the source repository, available
+at \url{https://github.com/Marco-Christiani/jaxley-extracellular/releases/tag/paper-v0.1}.
 
 % =============================================================
 % References
