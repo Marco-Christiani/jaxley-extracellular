@@ -10,8 +10,14 @@ variable "enable_tpu" {
 }
 
 variable "zone" {
-  description = "TPU zone, e.g. us-central2-b."
+  description = "Default zone for regional resources (SQL region, bucket location, tracking server). Also the TPU zone unless tpu_zone is set."
   type        = string
+}
+
+variable "tpu_zone" {
+  description = "Override zone for the TPU VM only. Lets the TPU live in a different zone (e.g. for capacity) than the SQL/bucket/tracking server, which stay in zone's region. Null means use var.zone."
+  type        = string
+  default     = null
 }
 
 variable "name" {
@@ -137,6 +143,21 @@ variable "tracking_server_package" {
   default     = "mlflow[extras,db]>=2.12"
 }
 
+variable "tracking_server_constraints" {
+  description = <<-EOT
+    Extra requirements pinned alongside tracking_server_package via
+    `uv tool install ... --with '<constraints>'`. Default pins
+    google-auth<2.21 to avoid the universe-domain HTTPS probe of
+    metadata.google.internal that fails on this stack: the metadata
+    endpoint's TLS cert is signed by a Google-internal CA which isn't
+    in any standard trust bundle (system or certifi), so token refresh
+    SSL-errors and mlflow returns 500 to artifact PUTs. Pinning to a
+    pre-2.21 google-auth restores the HTTP-only metadata path.
+  EOT
+  type        = string
+  default     = "google-auth<2.21"
+}
+
 variable "tracking_server_command" {
   description = "Binary name to invoke, e.g. 'mlflow'."
   type        = string
@@ -147,9 +168,9 @@ variable "tracking_server_args" {
   description = <<-EOT
     Arguments passed to tracking_server_command. The launcher exports three
     environment variables before running the command, which you can reference here:
-      $DB_URI        -- full Postgres connection URI (password injected at runtime)
-      $ARTIFACT_ROOT -- gs://bucket/mlflow
-      $PORT          -- value of tracking_server_port
+      $DB_URI        full Postgres connection URI (password injected at runtime)
+      $ARTIFACT_ROOT gs://bucket/mlflow
+      $PORT          value of tracking_server_port
   EOT
   type        = string
   default     = "server --backend-store-uri $DB_URI --artifacts-destination $ARTIFACT_ROOT --serve-artifacts --host 0.0.0.0 --port $PORT --workers 1"

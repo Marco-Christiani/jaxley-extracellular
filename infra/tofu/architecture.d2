@@ -1,0 +1,91 @@
+# Infrastructure diagram for infra/tofu/main.tf
+
+direction: right
+
+dev: "Developer\nworkstation" {
+  shape: person
+}
+
+gcp: "Google Cloud Project" {
+  style.stroke-dash: 3
+  style.fill: "#f8f8ff"
+
+  vpc: "VPC (default or custom)" {
+    style.stroke-dash: 2
+    style.fill: "#eef5ff"
+
+    tpu: "TPU VM\n(google_tpu_v2_vm.this)" {
+      shape: rectangle
+      style.fill: "#ffe8b0"
+      style.bold: true
+      sub: "opt-in: enable_tpu"
+    }
+
+    tracking_server: "Tracking Server\n(GCE instance)\nmlflow[db]" {
+      shape: rectangle
+      style.fill: "#b0e0a0"
+      style.bold: true
+      sub: "opt-in: enable_tracking_server"
+    }
+
+    firewall: "Firewall rule\n(port 5000)" {
+      shape: rectangle
+      style.fill: "#ffffff"
+      sub: "10.0.0.0/8  +  35.235.240.0/20 (IAP)"
+    }
+
+    static_ip: "Static external IP\n(google_compute_address)" {
+      shape: rectangle
+      style.fill: "#ffffff"
+    }
+  }
+
+  iap: "Identity-Aware Proxy\n(tunnel endpoint)" {
+    shape: cloud
+    style.fill: "#e0eaff"
+  }
+
+  sql: "Cloud SQL\nPostgres 16\n(tracking metadata)" {
+    shape: cylinder
+    style.fill: "#d8c8ff"
+    sub: "opt-in: enable_tracking_db"
+  }
+
+  gcs: "GCS bucket\n(artifacts, retention-bounded)" {
+    shape: cylinder
+    style.fill: "#d8c8ff"
+    sub: "opt-in: enable_artifact_bucket"
+  }
+
+  secret: "Secret Manager\n(DB password)" {
+    shape: rectangle
+    style.fill: "#f0d0d0"
+  }
+
+  sa: "Service Account\n(tracking server)" {
+    shape: rectangle
+    style.fill: "#f0f0f0"
+    sub: "roles: secretAccessor, storage.objectAdmin"
+  }
+}
+
+# Runtime data/control flow
+dev -> gcp.iap: "IAP tunnel\nlocalhost:5000 -> server:5000"
+gcp.iap -> gcp.vpc.firewall: "IAP range"
+gcp.vpc.firewall -> gcp.vpc.tracking_server: "port 5000"
+gcp.vpc.static_ip -> gcp.vpc.tracking_server: "external IP"
+
+gcp.vpc.tpu -> gcp.vpc.tracking_server: "log experiments\n(internal VPC URI)"
+
+gcp.vpc.tracking_server -> gcp.sql: "SQL driver\n(metadata, runs, params, metrics)"
+gcp.vpc.tracking_server -> gcp.gcs: "--serve-artifacts\n(proxied from workers)"
+gcp.vpc.tracking_server -> gcp.secret: "fetch DB password at boot"
+
+gcp.sa -> gcp.vpc.tracking_server: "bound to VM"
+gcp.sa -> gcp.secret: "secretAccessor"
+gcp.sa -> gcp.gcs: "storage.objectAdmin"
+
+# Provisioning / bootstrap
+dev -> gcp: "tofu apply\ntask infra:*" {
+  style.stroke-dash: 3
+}

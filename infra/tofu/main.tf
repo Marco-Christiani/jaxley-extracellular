@@ -215,7 +215,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 # Install tracking server
-$UV_BIN/uv tool install '${var.tracking_server_package}'
+$UV_BIN/uv tool install '${var.tracking_server_package}'%{ if var.tracking_server_constraints != "" } --with '${var.tracking_server_constraints}'%{ endif }
 
 # Write a launcher that fetches the DB password from Secret Manager at runtime.
 # The password never appears in instance metadata or systemd unit files.
@@ -234,7 +234,7 @@ exec /root/.local/bin/${var.tracking_server_command} ${var.tracking_server_args}
 LAUNCHER
 chmod +x /usr/local/bin/tracking-server-start
 
-# Systemd unit -- no secrets in the unit file
+# Systemd unit. No secrets in the unit file.
 cat > /etc/systemd/system/tracking-server.service <<'UNIT'
 [Unit]
 Description=Experiment Tracking Server
@@ -280,7 +280,7 @@ resource "google_tpu_v2_vm" "this" {
   provider = google-beta
 
   project          = var.project_id
-  zone             = var.zone
+  zone             = coalesce(var.tpu_zone, var.zone)
   name             = var.name
   description      = var.description
   runtime_version  = var.runtime_version

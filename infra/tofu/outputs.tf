@@ -4,8 +4,13 @@ output "tpu_name" {
 }
 
 output "zone" {
+  value       = var.enable_tpu ? google_tpu_v2_vm.this[0].zone : var.zone
+  description = "Effective TPU zone (taskfile uses this for TPU SSH commands). Falls back to var.zone when no TPU."
+}
+
+output "regional_zone" {
   value       = var.zone
-  description = "Zone"
+  description = "Zone used for regional resources (SQL, bucket, tracking server)."
 }
 
 output "project_id" {
