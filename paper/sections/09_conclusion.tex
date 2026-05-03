@@ -2,15 +2,10 @@
 \section{Conclusion}\label{sec:conclusion}
 % =============================================================
 
-We have added extracellular stimulation to Jaxley by recovering the
-discrete activating function from the simulator's own axial diffusion
-operator and injecting it as an equivalent compartmental current through
-the public stimulus API. The pipeline composes with \texttt{jit},
-\texttt{vmap}, \texttt{grad}, and \texttt{jax.sharding} without a fork
-of the simulator, agrees with Jaxley's internal voltage vector field to
-$\sim\!10^{-13}$ relative error, and runs the BBP L2/3 pyramidal cell at
-full $50$-compartment-per-branch fidelity on a four-chip v5e pod-slice.
-What this enables, and what we leave to follow-up work, is gradient-based
-search over the waveform itself --- the design problem that motivated
-the extension.
-
+The pipeline introduced here makes gradient-based waveform design
+tractable on the same compute budget that gradient-free pipelines pay
+for a single forward pass, with sub-millivolt per-site residuals
+against NEURON on a real BBP cortical morphology under extracellular
+stimulation. Direct optimisation of $w(t)$ against
+spike-elicitation and selectivity targets is the natural next step
+(\cref{sec:limitations}).

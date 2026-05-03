@@ -2,24 +2,25 @@
 \section{BBP cell-model implementation notes}\label{app:bbp-implementation}
 % =============================================================
 
-Two implementation issues affect reproducibility of the BBP cell models
-in Jaxley but are unrelated to the paper's results.
-
 \paragraph{SWC soma conversion.} The BBP source morphologies represent
 the soma as a two-dimensional contour, which the SWC format cannot
 encode. The Neurolucida-to-SWC conversion tool emits soma points with
 $r = 0$, which Jaxley turns into degenerate zero-area compartments
-that produce NaN voltages at the first integration step. We patch the
-converted SWC files at load time so the soma points carry a
-non-degenerate radius.
+that produce NaN voltages at the first integration step. We work
+around this by committing pre-patched SWC files with non-degenerate
+soma radii to the repository
+(\texttt{src/jaxley\_extracellular/bbp/data/}); downstream
+\texttt{jx.read\_swc} calls read these patched files directly.
 
-\paragraph{Calcium-channel insertion order.} Calcium signalling is
-sensitive to channel insertion order. The calcium Nernst reversal
-must be established before any calcium-carrying channel, which in
-turn must precede the calcium pump and the calcium-activated
-potassium channel.
+\paragraph{Calcium-channel insertion order.} The calcium channels
+share state variables ($e_\mathrm{Ca}$ and $[\mathrm{Ca}]_i$) that
+Jaxley evaluates in registration order, so insertion order matters.
+The calcium Nernst reversal must be established before any
+calcium-carrying channel, which in turn must precede the calcium pump
+and the calcium-activated potassium channel.
 \texttt{cell\_factory.\_insert\_calcium\_chain} enforces
 \texttt{CaNernstReversal} $\to$ \texttt{CaHVA/CaLVA} $\to$
-\texttt{CaPump} $\to$ \texttt{SKE2}; out-of-order insertion produces
-uninitialised state references at integration time.
+\texttt{CaPump} $\to$ \texttt{SKE2}; out-of-order insertion couples
+each step to a stale value of the shared state and gives incorrect
+calcium-K dynamics.
 

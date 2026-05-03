@@ -6,16 +6,18 @@ The activating function $G\boldsymbol{\phi}$ has units mV/ms (a
 voltage rate), but Jaxley's stimulus API accepts current in nA.
 Internally Jaxley converts
 $i_{\text{ext}}\,[\mu\text{A/cm}^2] = i_{\text{nA}}\,[\text{nA}] /
-A\,[\mu\text{m}^2]\cdot 10^5$ and adds $i_{\text{ext}}/c$ to $dv/dt$.
-To inject $[G\boldsymbol{\phi}]_j$ on the other side of this
-conversion, we encode
+A\,[\mu\text{m}^2]\cdot 10^5$ (where the $10^5$ absorbs the
+$\mathrm{nA}/\mu\mathrm{m}^2 \to \mu\mathrm{A}/\mathrm{cm}^2$ unit
+conversion) and adds $i_{\text{ext}}/c$ to $dv/dt$. To inject
+$[G\boldsymbol{\phi}]_j$ on the other side of this conversion, we
+encode
 \[
   i_{\text{ecs},j}\,[\text{nA}] \;=\;
     c_j \cdot [G\boldsymbol{\phi}(t)]_j \cdot \frac{A_j}{10^5}.
 \]
-The $c_j$ and $A_j$ factors cancel in the round trip; they are an
-encoding artifact of using the public API rather than modifying the
-solver. In matrix form,
+The $c_j$, $A_j$, and unit-conversion factors cancel exactly in the
+round trip; they are an encoding artifact of using the public API
+rather than modifying the solver. In matrix form,
 \[
   \mathbf{I}_{\text{ecs}} \;=\;
     \left(\mathbf{c} \odot \frac{\mathbf{A}}{10^5}\right)

@@ -12,14 +12,14 @@ sensitive to local geometry. In present clinical practice these parameters
 are tuned by hand, guided by symptom observation across patient visits.
 Computational design has been explored as an alternative, but the
 standard pipeline pairs a volume-conductor field model with
-NEURON~\cite{Hines2001NeuronAT} and is bound by NEURON's CPU-serial
-integration when sweeping the design space.
+NEURON~\cite{Hines2001NeuronAT}, and the default single-core CPU
+integration becomes the bottleneck when sweeping the design space.
 
 Studies searching for energy-efficient or selective waveforms in this
 pipeline have either used genetic
 algorithms~\cite{grill2015model,wongsarnpigoon2010energy} or trained
 surrogate neural networks on NEURON
-outputs~\cite{melissano2024efficient}. Genetic search returns no
+outputs~\cite{hussain2024efficient}. Genetic search returns no
 gradient and requires many forward simulations per design. Surrogates
 are fast at inference but introduce approximation error and have to be
 retrained whenever the underlying biophysical model changes.

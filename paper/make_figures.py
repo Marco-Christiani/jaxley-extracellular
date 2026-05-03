@@ -46,6 +46,10 @@ CONFIG: dict[str, object] = {
 }
 
 
+def _bottom_legend(y: float = -0.14) -> dict[str, object]:
+    return dict(orientation="h", yanchor="top", y=y, xanchor="center", x=0.5)
+
+
 def _n_devices(npz: object, default: int = 1) -> int:
     """Read ``n_devices`` from an npz, defaulting if the field is absent.
 
@@ -165,7 +169,7 @@ def make_bbp_intracellular_parity(
         height=620,
         width=900,
         showlegend=True,
-        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
+        legend=_bottom_legend(-0.12),
         title=(
             f"{CONFIG['cell_label']} parity: "
             f"{CONFIG['jaxley_label']} vs {CONFIG['neuron_label']}"
@@ -313,8 +317,8 @@ def make_throughput_bbp(
             f"{CONFIG['cell_label']} throughput: "
             f"{CONFIG['neuron_label']} vs {CONFIG['jaxley_label']}"
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
-        margin=dict(t=70, b=140, l=90, r=40),
+        legend=_bottom_legend(-0.16),
+        margin=dict(t=70, b=105, l=90, r=40),
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -415,8 +419,8 @@ def make_throughput_v5p4_scaling(
         width=900,
         height=520,
         title=f"{CONFIG['jaxley_label']} throughput, {n_dev}-chip pod-slice",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.30, xanchor="center", x=0.5),
-        margin=dict(t=70, b=120, l=90, r=40),
+        legend=_bottom_legend(-0.14),
+        margin=dict(t=70, b=95, l=90, r=40),
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -896,8 +900,8 @@ def make_strength_duration(
         width=900,
         height=620,
         title="Strength-duration on the HH cable",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5),
-        margin=dict(t=70, b=120, l=80, r=30),
+        legend=_bottom_legend(-0.14),
+        margin=dict(t=70, b=95, l=80, r=30),
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

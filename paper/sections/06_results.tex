@@ -28,17 +28,17 @@ Jaxley loads, with three confounders equalised before measurement.
 we disable it for the comparison since our Jaxley implementation does
 not model myelin. (ii) The \texttt{jaxley\_mech.channels.l5pc} ports
 apply a fixed $Q_{10}$ temperature correction; we run NEURON at
-$34\,^\circ$C to match. (iii) NEURON's \texttt{geom\_nseg} produces $1131$
-segments on this morphology, while Jaxley with \texttt{ncomp}$\,=\,2$
-and \texttt{max\_branch\_len}$\,=\,100$ produces $700$ compartments;
-we report the mismatch rather than forcing them to match.
+$34\,^\circ$C to match. (iii) NEURON's \texttt{geom\_nseg} and Jaxley's
+\texttt{ncomp}+\texttt{max\_branch\_len} knobs settle on different
+grids on this morphology ($1131$ vs $700$; \cref{sec:cells-bbp}); we
+report the mismatch rather than forcing them to match.
 
 \paragraph{Step 1: channel kinetics.} We reduce the morphology to a
 $20\,\mu$m$\times 20\,\mu$m cylinder (\texttt{parity\_single\_soma}),
 so that the comparison exercises only channel kinetics and ion
 reversals. With the full BBP Pyr and PV channel sets installed, spike
-counts agree to $\pm 1$ over $\sim\!50$ spikes per cell (Pyr: $18$
-NEURON / $16$ Jaxley; PV: $50$/$51$), and AP peak heights agree to
+counts agree to $\pm 2$ over $\sim\!50$ spikes per cell (Pyr: $16$
+NEURON / $18$ Jaxley; PV: $50$/$51$), and AP peak heights agree to
 $\pm 0.04\,$mV across both cells. The match is consistent with a
 source-level diff of the relevant \texttt{jaxley\_mech} channels
 against the BBP \texttt{.mod} files.
@@ -52,14 +52,16 @@ $-50\,\mu$s ($2$ integration steps at $\Delta t = 0.025\,$ms), and AP
 peak by $+0.49\,$mV. Subthreshold
 waveform RMSE is $0.275\,$mV with Pearson $r = 0.9995$;
 suprathreshold full-trace RMSE is $6.032\,$mV with $r = 0.9253$, where
-the latter is dominated by spike-edge timing offsets. The
-$-0.38\,$mV resting-potential residual is explained by our
-Euclidean-distance approximation to BBP's path-distance apical $I_h$
-gradient (\cref{sec:cells-bbp}); a path-distance traversal would close
-it further.
+the latter is dominated by spike-edge timing offsets. The pre-stim Jaxley
+trace runs about $0.4\text{--}0.5\,$mV more hyperpolarised than NEURON's,
+attributable to our Euclidean-distance approximation under-applying
+the apical $I_h$ gradient distally (\cref{sec:cells-bbp}); after the
+stim runs and the cell settles, the residual narrows to roughly
+$0.1\,$mV. A path-distance traversal would close it further.
 
-\paragraph{Step 3: full-morphology Pyr, extracellular.} The headline
-claim of this paper is that ECS works on a realistic branched cell.
+\paragraph{Step 3: full-morphology Pyr, extracellular.} The central
+empirical claim of this section is that ECS works on a realistic
+branched cell.
 We test it by comparing voltage traces with NEURON when both
 simulators see the same point-source field on the same Pyr
 morphology. After aligning Jaxley's compartment centres and NEURON's
@@ -110,8 +112,8 @@ budget (\cref{sec:res-throughput}).
 
 At a given electrode distance and pulse width, what amplitude does it
 take to evoke a spike? The strength--duration curve is the standard
-first answer to that question, and underlies almost every clinical and
-engineering decision downstream of it~\cite{4122088}. We define the threshold $A^*$ for a fixed
+first answer to that question and underlies many downstream design
+decisions~\cite{4122088}. We define the threshold $A^*$ for a fixed
 configuration $(d, \text{polarity}, t_p)$ as the smallest electrode
 amplitude that elicits a single soma spike in the simulation:
 \[
@@ -132,18 +134,21 @@ detection stays stable across this range for the HH cable. The whole
 sweep runs in float-32. Cathodic and biphasic thresholds are well-resolved at
 every $(d,\,t_p)$ pair and follow the textbook strength--duration
 shape, declining toward a rheobase as $t_p$ grows
-(\cref{fig:strength-duration}). Monophasic anodic elicits spikes only
-at short pulse widths and short distances; it saturates at the bracket
-ceiling for longer pulses. This polarity asymmetry is the discrete
-analogue of the activating-function sign argument: cathodic stimulation
-sets up a depolarising forcing in the central segments where the cable
-fires first, whereas anodic stimulation depolarises the cable ends,
-which only triggers under brief, geometrically-favourable
+(\cref{fig:strength-duration}). Monophasic anodic resolves above the bracket
+ceiling only at short pulse widths, with the viable pulse-width range
+broadening as electrode distance grows (one width at $d = 25\,\mu$m;
+five widths at $d = 200\,\mu$m); longer pulses saturate at the bracket
+ceiling. This polarity asymmetry is the discrete analogue of the
+activating-function sign argument: cathodic stimulation sets up a
+depolarising forcing in the central segments where the cable fires
+first, whereas anodic stimulation depolarises the cable ends, which
+only triggers under brief, geometrically-favourable
 conditions~\cite{rattay1986analysis,Mcneal1976AnalysisOA}. For a
-designer choosing parameters, the takeaway is that
-ms-scale cathodic pulses minimise charge per spike at every distance
-in the sweep, charge-balanced biphasic costs roughly two-fold more,
-and pure anodic stimulation is only viable in the short-pulse corner.
+designer choosing parameters, cathodic and biphasic thresholds track
+each other closely across the sweep (median biphasic/cathodic ratio
+$\approx 1.1$), with biphasic occasionally lower at long pulse widths
+and the farther distances; pure anodic stimulation is viable only in
+the short-pulse regime.
 
 \begin{figure}[t]
   \centering
@@ -230,7 +235,8 @@ The cheap-cells curve scales linearly to $B=1024$ at $5.1\,$ms per cell
 ($\sim\!195$ cells/s); the full-fidelity curve scales linearly through
 $B=1024$, peaks at $7.28$ cells per second at $B=2048$, and rolls over
 at $B=4096$ as the four chips approach arithmetic-intensity saturation
-(\cref{fig:throughput-scaling}). The full-fidelity regime depends on
+(compute-bound rather than memory-bandwidth-bound;
+\cref{fig:throughput-scaling}). The full-fidelity regime depends on
 the sparse-$G$ and \texttt{checkpoint\_lengths} choices in the Method
 (\cref{sec:method}); without either, the $(T,\,B,\,N)$ voltage
 history overflows the v5e's $16\,$GB chip memory at $B \ge 256$.
@@ -290,8 +296,9 @@ design signal. The position gradient reported in
 \cref{sec:results-verify} admits a direct physical reading. With
 the electrode at $(0,\,100,\,0)\,\mu$m, the negative $y$-component of
 $\partial v_\mathrm{soma,\,peak} / \partial \mathbf{x}_e$ means moving
-the electrode farther from the cell along its dorsal axis reduces the
-soma response, consistent with the $1/d$ decay in the field model; the
+the electrode along $+y$ (away from the soma, toward the apical tree)
+reduces the soma response, consistent with the $1/d$ decay in the
+field model; the
 horizontal components measure the local field anisotropy induced by the
 asymmetric placement of dendrites relative to the electrode. Free-form
 optimisation of $w(t)$ against a spike-elicitation target under

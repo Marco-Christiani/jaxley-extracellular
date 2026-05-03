@@ -20,10 +20,14 @@ own axial term, $G\boldsymbol{\phi}$ is the correct extracellular
 forcing on the same tree.
 
 \paragraph{$O(\Delta x^2)$ convergence.}
-For a uniform straight cable with a point-source electrode the activating
-function has the closed form $\rho_a^{-1}\,\partial^2\phi/\partial x^2$.
-We compare $G\boldsymbol{\phi}$ against this analytical reference on the
-central $10\,\%$ of the cable (boundary effects dominate near the ends)
+For a uniform straight cable with a point-source electrode,
+$[G\boldsymbol{\phi}]_j$ at interior compartments is a fixed multiple
+of $\partial^2\phi/\partial x^2$, with the prefactor absorbing
+Jaxley's per-row capacitance/area normalisation and unit conversions
+(\cref{sec:method}). We compare $G\boldsymbol{\phi}$ against this
+analytical reference, evaluated with the matching prefactor, on the
+central $10\,\%$ of the cable (boundary effects dominate near the
+ends)
 across compartment counts $\{50,\,100,\,200,\,400\}$. The relative error
 decreases by a factor of $\sim 4$ per doubling
 ($3.95\times,\,3.99\times,\,4.00\times$), consistent with the
@@ -58,6 +62,7 @@ pulse from electrode $(0, 100, 0)\,\mu$m is
   \frac{\partial v_{\mathrm{soma,\,peak}}}{\partial \mathbf{x}_e}
   = (\,0.330,\,-0.371,\,-0.243\,)\;\mathrm{mV}/\mu\mathrm{m},
 \]
-returned in $37.6\,$s on a v5e single chip. The full receipt is part
-of the artifact set described in the reproducibility appendix.
+returned in $37.6\,$s on a v5e single chip. The position gradient is
+interpreted physically in \cref{sec:res-grad}; the receipt is part of
+the artifact set.
 

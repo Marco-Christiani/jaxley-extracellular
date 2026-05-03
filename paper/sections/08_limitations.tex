@@ -12,10 +12,10 @@
   \item \emph{Quasi-static assumption.} Tissue capacitance is ignored;
   this is standard at neural-stimulation frequencies but breaks down at
   very short pulse edges.
-  \item \emph{Float-32 caveat.} The production sweeps run in float-32
-  after a $0.77\,\%$ threshold-difference check against float-64 on one
-  HH cable configuration; the check should be repeated per cell type
-  before reusing float-32 in a regime we have not validated.
+  \item \emph{Float-32 caveat.} The production sweeps run in float-32.
+  We did not validate float-32 against float-64 exhaustively across
+  cell types and stimulation regimes, and a per-cell-type check is
+  advisable before reusing float-32 outside what we tested.
   \item \emph{PV cell stability.} The full-morphology BBP L2/3 LBC
   basket cell is unstable in Jaxley's default integrator (NaN at
   $\sim\!30\,$ms even unstimulated), traced to BBP's
@@ -25,15 +25,30 @@
   (\cref{sec:res-neuron}); all full-morphology runtime claims in this
   paper are therefore Pyr-only.
   \item \emph{Pyr Ih path-distance traversal.} The
-  $-0.38\,$mV resting-potential offset against NEURON
-  (\cref{sec:res-neuron}) is the residual of approximating BBP's
-  path-distance apical $I_h$ gradient with Euclidean distance.
-  Replacing the approximation with a parent-pointer breadth-first
-  traversal would close the residual but we did not implement it.
-  \item \emph{Solver floor.} \texttt{checkpoint\_lengths} bounds memory
-  but not arithmetic. The backward-Euler scan dominates the per-step
-  cost on a v5e chip and is what saturates the throughput curve at
-  $B=2048$ in \cref{sec:res-throughput}.
+  $0.4\text{--}0.5\,$mV pre-stim resting-potential offset against
+  NEURON (\cref{sec:res-neuron}) is the residual of approximating
+  BBP's path-distance apical $I_h$ gradient with Euclidean distance.
+  Replacing the approximation with a soma-rooted path-distance
+  traversal that accumulates compartment-segment lengths would close
+  the residual but we did not implement it.
+  \item \emph{Loss-surface smoothness.} The \texttt{fit\_demo} and
+  position-gradient receipts cited above sit on locally smooth loss
+  landscapes (a single-parameter trace-MSE perturbation and the
+  position gradient at fixed waveform). Spike-count and
+  spike-elicitation objectives are step-discontinuous at threshold, so
+  gradient-based waveform optimisation against them requires a
+  smoothed surrogate loss. Deistler et al.~\cite{deistler2025jaxley}
+  apply soft-DTW to biophysical-parameter trace fits, which softens
+  timing mismatches in MSE-on-trace losses; the spike-elicitation
+  analogue is a differentiable spike-count surrogate, which we have
+  not yet implemented. Layering either on top of the
+  hierarchical-scan checkpointing and warm restarts this pipeline
+  already uses is follow-up work.
+  \item \emph{Per-step arithmetic ceiling.} \texttt{checkpoint\_lengths}
+  bounds memory but not arithmetic. The backward-Euler scan dominates
+  the per-step cost on a v5e chip and limits arithmetic throughput at
+  large $B$, capping the peak at $B = 2048$ before rollover at
+  $B = 4096$ in \cref{sec:res-throughput}.
 \end{itemize}
 
 \paragraph{Future work.}
@@ -53,6 +68,7 @@ exactly what the differentiable pipeline is built to trace; a
 penalty-based formulation
 $\mathcal{L}(w) = \lVert w \rVert_1 \Delta t
 + \lambda\,\tilde{F}(w;\theta_2)$ subject to
-$\tilde{F}(w;\theta_1) \ge \tau$ keeps the problem smooth and lets a
-$\lambda$-sweep trace the frontier directly.
+$\tilde{F}(w;\theta_1) \ge \tau$, where the soft surrogate $\tilde{F}$
+replaces a hard spike-count constraint with a differentiable
+elicitation score, lets a $\lambda$-sweep trace the frontier directly.
 

@@ -12,16 +12,19 @@ $G$ into real ($R$) and branchpoint ($B$) blocks gives
   =
   \begin{pmatrix} [G\mathbf{v}]_R \\ [G\mathbf{v}]_B \end{pmatrix}.
 \]
-Branchpoint nodes carry no membrane and no capacitance and so satisfy
-the instantaneous constraint $[G\mathbf{v}]_B = 0$, giving
-$\mathbf{v}_B = -G_{BB}^{-1}G_{BR}\mathbf{v}_R$ and the Schur
-complement
+Branchpoint nodes carry no membrane, so $c_b A_b = 0$ at $b$ and the
+cable equation at $b$ reduces to the algebraic constraint
+$[G\mathbf{v}]_B = 0$, giving $\mathbf{v}_B = -G_{BB}^{-1}G_{BR}\mathbf{v}_R$
+and the Schur complement
 \[
   \tilde{G} \;=\; G_{RR} - G_{RB}\,G_{BB}^{-1}\,G_{BR}.
 \]
 The same operator applies to the extracellular forcing:
-$\tilde{G}\boldsymbol{\phi}$ gives the activating function at the real
-compartments. Our implementation delegates this assembly to a private
-Jaxley helper rather than reconstructing it from scratch, so the
-operator stays in sync with upstream solver changes.
+$\tilde{G}\boldsymbol{\phi}_R$ gives the activating function at the
+real compartments, where $\boldsymbol{\phi}_R$ is the field sampled at
+real compartment centres only --- the reduced operator acts only on
+real compartments, so no $\boldsymbol{\phi}_B$ value enters the
+forcing. Our implementation delegates this assembly to a
+private Jaxley helper rather than reconstructing it from scratch, so
+the operator stays in sync with upstream solver changes.
 

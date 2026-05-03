@@ -7,10 +7,10 @@ We adopt the notation of \cref{tab:notation}. The pipeline is:
 \setlength{\abovedisplayskip}{4pt}
 \setlength{\belowdisplayskip}{4pt}
 \begin{equation}
-  I_e(t) \xrightarrow{\text{point source}} \boldsymbol{\Phi}
+  I_e(t) \xrightarrow{\text{field}} \boldsymbol{\Phi}
   \xrightarrow{G\,\cdot} \mathbf{f}
   \xrightarrow{\text{encode}} \mathbf{I}_{\text{ecs}}
-  \xrightarrow{\text{Jaxley}} \mathbf{v}(t).
+  \xrightarrow{\text{integrate}} \mathbf{v}(t).
   \label{eq:pipeline}
 \end{equation}
 \endgroup
@@ -62,26 +62,26 @@ where $g_{jk}$ is the raw axial conductance (units S) between
 compartments $j$ and $k$, $c_j$ is specific membrane capacitance, and
 $A_j$ is compartment surface area. Internally, Jaxley folds $c_j A_j$
 and unit conversions into a single voltage diffusion operator $G$ with
-entries $\tilde g_{jk} = g_{jk} / (c_j A_j)$ (in $1/$ms), so that
-$\dot{\mathbf{v}} = G\mathbf{v} + (\text{membrane terms})$. The
-sign pattern of $G$ is the weighted graph Laplacian:
+entries $\tilde g_{jk} = g_{jk} / (c_j A_j)$ (in $1/$ms; note the
+asymmetric row-$j$ normalisation, which is why $G$ is symmetric only
+when $c_j A_j$ is uniform across compartments), so that
+$\dot{\mathbf{v}} = G\mathbf{v} + (\text{membrane terms})$. The sign
+pattern of $G$ is the weighted graph Laplacian:
 $G_{jk} = +\tilde g_{jk}$ for adjacent $k\neq j$,
 $G_{jj} = -\sum_{k\neq j} \tilde g_{jk}$, and zero otherwise. Rows sum
-to zero (current conservation), and $G$ is symmetric only when $c_j
-A_j$ is uniform across compartments.
+to zero (current conservation).
 
 An extracellular field $\phi_j(t)$ shifts the axial driving force from
 $v_k - v_j$ to $(v_k+\phi_k)-(v_j+\phi_j)$; by linearity of $G$, this
 is equivalent to adding $G\boldsymbol{\phi}$ as a forcing term, the
 discrete analogue of Rattay's continuous activating function
 $\rho_a^{-1}\partial^2\phi/\partial x^2$~\cite{rattay1986analysis}.
-On a uniform straight cable with constant radius $a$ and compartment
-length $\Delta x$, this reduces to
-$[G\boldsymbol{\phi}]_j = \tilde g\,(\phi_{j-1} - 2\phi_j + \phi_{j+1})$
-with raw axial conductance $g = \pi a^2 / (2\rho_a\,\Delta x)$ and
-normalised entry $\tilde g = g/(c\,A)$, recovering the standard
-$[1,-2,1]/\Delta x^2$ stencil for $\partial^2\phi/\partial x^2$ with
-$O(\Delta x^2)$ truncation error (verified in \cref{sec:results-verify}).
+On a uniform straight cable with constant radius and compartment
+length $\Delta x$, $[G\boldsymbol{\phi}]_j$ at interior compartments
+reduces to a constant multiple of the standard
+$[1,-2,1]/\Delta x^2$ stencil for $\partial^2\phi/\partial x^2$, with
+$O(\Delta x^2)$ truncation error (verified in
+\cref{sec:results-verify}).
 On branched morphologies, we delegate the elimination of the
 branchpoint pseudo-nodes that Jaxley introduces at cable junctions to
 its own solver routine, keeping the operator in sync with upstream

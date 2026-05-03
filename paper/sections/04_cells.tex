@@ -18,13 +18,15 @@ value for cortical grey matter.
 
 For morphologically detailed simulations we adapt two L2/3 cell models
 from the Blue Brain Project~\cite{markram2015reconstruction}: the
-regular-spiking pyramidal cell
-\texttt{L23\_PC\_cADpyr229} and the parvalbumin-expressing basket cell
-\texttt{L23\_LBC\_cNAC187}. Channel kinetics are reused from
+regular-spiking pyramidal cell \texttt{L23\_PC\_cADpyr229} and the
+parvalbumin-expressing basket cell \texttt{L23\_LBC\_cNAC187} (the
+latter enters the paper's results only at single-compartment level for
+channel-kinetics parity, since its full morphology does not run stably
+in our setup; \cref{sec:limitations}). Channel kinetics are reused from
 \texttt{jaxley\_mech.channels.l5pc}, which provides Jaxley-compatible
 implementations of the BBP L5 channel set; conductances and passive
-parameters are read from the BBP biophysics specification and applied per
-section group (soma, axon, apical, basal).
+parameters are read from each cell's BBP \texttt{biophysics.hoc} file
+and applied per section group (soma, axon, apical, basal).
 
 Two implementation details affect reproducibility but do not bear on
 the paper's results: the SWC conversion of the BBP soma contour, and
@@ -35,11 +37,13 @@ A third detail is needed for NEURON parity. The \texttt{cADpyr229}
 apical $I_h$ conductance follows a distance-dependent gradient
 specified in BBP's biophysics file with a path-distance argument; we
 apply it under a Euclidean-distance approximation to the soma centre,
-which closes a $0.6\,$mV resting-potential offset that a uniform
-somatic value otherwise leaves (closed-form gradient and
-implementation in \cref{app:ih-gradient}). Long SWC branches are
-subdivided at load time (\texttt{max\_branch\_len}$\,=\,100\,\mu$m) so
-the compartment count tracks what NEURON's \texttt{geom\_nseg} routine
-produces for the same morphology; we found this necessary for
-spike-timing parity (\cref{sec:discussion}).
+which reduces the pre-stim resting-potential offset against NEURON
+relative to a uniform somatic value (closed-form gradient and
+quantification in \cref{app:ih-gradient}; the residual is reported in
+\cref{sec:res-neuron}). Long SWC
+branches are subdivided at load time
+(\texttt{max\_branch\_len}$\,=\,100\,\mu$m), giving roughly $700$
+compartments per cell against NEURON's \texttt{geom\_nseg}$\,=\,1131$
+reference discretisation; the resulting drift is characterised in
+\cref{sec:res-neuron}.
 
