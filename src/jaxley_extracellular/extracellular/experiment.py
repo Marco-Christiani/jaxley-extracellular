@@ -28,7 +28,21 @@ from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 
 class ECSExperiment:
-    """Pre-computed static parts of an extracellular stimulation experiment.
+    r"""Pre-computed static parts of an extracellular stimulation experiment.
+
+    The experiment object caches the static terms in the package pipeline:
+
+    .. math::
+
+        I_e(t)
+        \xrightarrow{\mathrm{field}}
+        \boldsymbol{\Phi}
+        \xrightarrow{G\,\cdot}
+        \mathbf{f}
+        \xrightarrow{\mathrm{encode}}
+        \mathbf{I}_{\mathrm{ecs}}
+        \xrightarrow{\mathrm{integrate}}
+        \mathbf{v}(t).
 
     Attributes
     ----------
@@ -94,7 +108,12 @@ class ECSExperiment:
         waveforms: Array,
         checkpoint_lengths: list[int] | None = None,
     ) -> Array:
-        """Run one ECS simulation and return voltage traces.
+        r"""Run one ECS simulation and return voltage traces.
+
+        The input ``waveforms`` stores electrode currents :math:`I_e(t)`.
+        The method computes :math:`\boldsymbol{\Phi}`, encodes
+        :math:`G\boldsymbol{\Phi}` as :math:`\mathbf{I}_{\mathrm{ecs}}`,
+        and integrates the resulting Jaxley model.
 
         Parameters
         ----------

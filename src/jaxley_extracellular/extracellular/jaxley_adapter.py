@@ -79,7 +79,7 @@ def get_compartment_xyz(module: Any) -> np.ndarray:
 
 
 def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
-    """Convert per-compartment phi_e to equivalent stimulus current in nA.
+    r"""Convert per-compartment :math:`\boldsymbol{\Phi}` to current in nA.
 
     Wraps the three-step pipeline:
 
@@ -89,6 +89,15 @@ def build_ecs_stimuli_nA(module: Any, phi_e_mV: Array) -> Array:
        :func:`build_voltage_operator_G`.
     3. Apply :func:`phi_e_to_ecs_nA` to obtain the equivalent injected
        current.
+
+    Algebraically, this helper computes the public-API current encoding
+
+    .. math::
+
+        \mathbf{I}_{\mathrm{ecs}}
+        =
+        \left(\mathbf{c} \odot \frac{\mathbf{A}}{10^5}\right)
+        \odot (G\boldsymbol{\Phi}).
 
     Parameters
     ----------

@@ -1,9 +1,22 @@
-"""Point-source electrode field model (multi-electrode).
+r"""Point-source electrode field model.
 
-    phi_e [mV] = sum_i  I_i [uA] * 1e3 / (4 pi sigma [S/m] * r_i [um])
+For compartment centre :math:`\mathbf{x}_j` and electrode position
+:math:`\mathbf{x}_e`, the point-source distance is
 
-Superposition of point sources in a homogeneous, isotropic medium.
-Units: positions in um, current in uA, sigma in S/m, phi_e in mV.
+.. math::
+
+    d_{je} = \lVert \mathbf{x}_j - \mathbf{x}_e \rVert .
+
+With package units (distances in micrometres, current in microamps,
+conductivity in S/m, potential in mV), the extracellular potential is
+
+.. math::
+
+    \phi_j(t) =
+    \sum_e \frac{10^3 I_e(t)}{4\pi\sigma d_{je}} .
+
+This is the homogeneous, isotropic volume-conductor model used in the
+paper, with linear superposition over electrodes.
 """
 
 from __future__ import annotations
@@ -25,10 +38,17 @@ def point_source_potential(
     sigma: _ScalarLike,
     min_distance_um: float = 1.0,
 ) -> Array:
-    """Compute phi_e at compartment centres from point-source electrodes.
+    r"""Compute :math:`\boldsymbol{\Phi}` from point-source electrodes.
 
-    Multiple electrodes are handled via superposition: the total potential
-    is the sum of independent point-source contributions.
+    The returned matrix stores extracellular potential as
+    :math:`\boldsymbol{\Phi}_{jt} = \phi_j(t)`, with compartments on
+    rows and timesteps on columns:
+
+    .. math::
+
+        \boldsymbol{\Phi}_{jt}
+        =
+        \sum_e \frac{10^3 I_e(t)}{4\pi\sigma d_{je}} .
 
     All arithmetic is performed in JAX, so ``electrode_positions``,
     ``electrode_currents``, and ``sigma`` can be JAX-traced for

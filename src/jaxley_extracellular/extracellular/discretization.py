@@ -1,8 +1,20 @@
-"""Build the Jaxley-consistent voltage diffusion operator G.
+r"""Build the Jaxley-consistent voltage diffusion operator :math:`G`.
 
-G entries are in 1/ms, matching Jaxley's cable ODE:
+The operator has units :math:`1/\mathrm{ms}` and matches Jaxley's cable
+ODE after membrane and channel terms are separated:
 
-    dv/dt [mV/ms] = G [1/ms] @ v [mV] + membrane_terms
+.. math::
+
+    \frac{d\mathbf{v}}{dt}
+    =
+    G\mathbf{v} + \text{membrane terms}.
+
+Applying the same operator to extracellular potential gives the discrete
+activating function used throughout the paper:
+
+.. math::
+
+    \mathbf{f}(t) = G\boldsymbol{\phi}(t).
 """
 
 from __future__ import annotations
@@ -17,11 +29,20 @@ from jaxley_extracellular.extracellular.typing_helpers import ECSParameters
 
 
 def build_voltage_operator_G(module: Any, params: ECSParameters) -> Array:
-    """Build the dense voltage diffusion operator ``G``.
+    r"""Build the dense voltage diffusion operator :math:`G`.
 
     Delegates to Jaxley's own ``_compute_transition_matrix`` and strips
     branchpoint pseudo-nodes, exactly as Jaxley does in
     ``build_exp_euler_transition_matrix``.
+
+    The returned matrix acts on compartment voltages or extracellular
+    potentials ordered by ``module.base._internal_node_inds``:
+
+    .. math::
+
+        \dot{\mathbf{v}} = G\mathbf{v} + \cdots,
+        \qquad
+        \mathbf{f}(t) = G\boldsymbol{\phi}(t).
 
     Parameters
     ----------

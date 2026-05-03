@@ -1,7 +1,23 @@
-"""Convert extracellular potential phi_e into Jaxley-compatible stimulus current.
+r"""Convert extracellular potential into Jaxley-compatible stimulus current.
 
-f_ecs [mV/ms]  = G @ phi_e
-i_ecs [nA]     = cm * f_ecs * area / 1e5
+The activating function is the voltage-rate term
+
+.. math::
+
+    \mathbf{f} = G\boldsymbol{\Phi},
+
+with units mV/ms. Jaxley's public stimulation API accepts current in nA,
+so the package encodes :math:`\mathbf{f}` as
+
+.. math::
+
+    \mathbf{I}_{\mathrm{ecs}}
+    =
+    \left(\mathbf{c} \odot \frac{\mathbf{A}}{10^5}\right)
+    \odot (G\boldsymbol{\Phi}).
+
+The capacitance and area factors cancel inside Jaxley's current-density
+conversion; they are an API encoding detail, not an added biophysical term.
 """
 
 from __future__ import annotations
@@ -16,7 +32,18 @@ def phi_e_to_ecs_nA(
     cm: Array,
     area_um2: Array,
 ) -> Array:
-    """Convert phi_e to equivalent Jaxley stimulus current in nA.
+    r"""Convert :math:`\boldsymbol{\Phi}` to equivalent current in nA.
+
+    For each compartment :math:`j` and timestep :math:`t`, this computes
+
+    .. math::
+
+        I_{\mathrm{ecs},j}(t)
+        =
+        c_j [G\boldsymbol{\phi}(t)]_j \frac{A_j}{10^5}.
+
+    The result is shaped like ``phi_e_mV`` and can be passed through
+    Jaxley's standard ``data_stimuli`` path.
 
     Parameters
     ----------

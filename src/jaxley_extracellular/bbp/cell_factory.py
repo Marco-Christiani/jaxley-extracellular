@@ -147,8 +147,8 @@ def make_pyr_cell(
     Returns
     -------
     jx.Cell
-        The fully-configured Pyr cell with channels inserted, parameters
-        set, and states initialised.
+        Configured Pyr cell with channels inserted, parameters set, and
+        states initialised.
     """
     cell = jx.read_swc(
         str(swc_path or PYR_SWC),
@@ -226,8 +226,8 @@ def make_pv_cell(
     Returns
     -------
     jx.Cell
-        The fully-configured PV cell with channels inserted, parameters
-        set, and states initialised.
+        Configured PV cell with channels inserted, parameters set, and
+        states initialised.
     """
     cell = jx.read_swc(
         str(swc_path or PV_SWC),

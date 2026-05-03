@@ -137,7 +137,7 @@ def _tpu_info_metrics(tpu_info_bin: str) -> dict[str, float]:
     """One `tpu-info` CLI sample, parsed to MLflow-friendly metric names.
 
     Falls back to a coarse parse: extract the first numeric value per row of
-    the table that mentions a known column. Robust to small format changes
+    the table that mentions a known column. This handles small format changes
     in the upstream `tpu-info` output but loses sub-fields.
     """
     try:
