@@ -6,8 +6,8 @@
 Clinical neurostimulation devices, including deep brain stimulators and
 spinal cord stimulators, deliver pulsed extracellular currents through
 electrodes placed near the target tissue. Therapeutic outcome depends on a
-small set of waveform parameters --- pulse width, shape, amplitude,
-frequency, polarity --- whose effect on neural activation is nonlinear and
+small set of waveform parameters (pulse width, shape, amplitude,
+frequency, polarity) whose effect on neural activation is nonlinear and
 sensitive to local geometry. In present clinical practice these parameters
 are tuned by hand, guided by symptom observation across patient visits.
 Computational design has been explored as an alternative, but the
@@ -47,9 +47,9 @@ forward simulations.
   relative error in float64, $O(\Delta x^2)$ convergence to the
   analytical activating function, and end-to-end gradient flow through
   \texttt{jx.integrate}.
-  \item Three-step cross-validation against NEURON --- single-compartment
+  \item Three-step cross-validation against NEURON (single-compartment
   kinetics, full-morphology Pyr intracellular, and full-morphology Pyr
-  under extracellular stimulation --- with characterised residuals at
+  under extracellular stimulation), with characterised residuals at
   each step.
   \item TPU-scale empirical results on the Blue Brain Project (BBP)
   L2/3 pyramidal cell: a strength--duration sweep across distance and

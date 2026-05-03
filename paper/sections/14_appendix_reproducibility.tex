@@ -6,8 +6,8 @@ The build pipeline binds the entire compute environment, not just the
 Python packages. A \texttt{requirements.txt} inside a Dockerfile pins
 Python packages and a base OS image but leaves the C and
 C\nolinkurl{++} compilers, the CUDA toolchain, the Python interpreter
-build, and the cloud topology unspecified --- each of which can drift
-between machines and change numerical results. The stack we use
+build, and the cloud topology unspecified; any of those layers can
+drift between machines and change numerical results. The stack we use
 closes those gaps.
 
 \paragraph{Python dependencies (\texttt{uv}).} A Rust-implemented
@@ -34,9 +34,9 @@ gets a deterministic Python and CUDA environment; the project
 \texttt{README} carries the exact commands. Reproducing the figures
 from pinned data does not require any TPU-scale workload.
 
-\paragraph{Artifact set.} The curated data backing every figure ---
-parity \texttt{.npz} files, the strength--duration and biphasic-grid
-Zarr stores, the throughput sweeps, and the gradient receipt ---
-totals a few megabytes and is published as a separate artifact
-distribution rather than committed to the source repository, available
+\paragraph{Artifact set.} The curated data backing every figure
+(parity \texttt{.npz} files, the strength--duration and biphasic-grid
+Zarr stores, the throughput sweeps, and the gradient receipt) totals
+a few megabytes and is published as a separate artifact distribution
+rather than committed to the source repository, available
 at \url{https://github.com/Marco-Christiani/jaxley-extracellular/releases/tag/paper-v0.1}.

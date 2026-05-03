@@ -2,15 +2,14 @@
 \section{Empirical results}\label{sec:results-empirical}
 % =============================================================
 
-This section answers four questions that a stimulation designer or
-methodologist would put to the simulator. Does it agree with NEURON on
-a realistic morphology before we trust any extracellular result? At a
-given electrode distance and pulse width, what amplitude is needed to
-evoke a spike? Where in the asymmetric biphasic waveform space does
-the cell respond, given the same charge per pulse? And does the
-infrastructure scale to design-space sweeps that NEURON cannot run? We
-close with a gradient receipt that motivates the next step --- direct
-optimisation of the waveform itself. All runs reported below are part
+This section reports four results that bear on whether the simulator
+can be trusted for stimulation design: agreement with NEURON on a
+realistic morphology, threshold amplitudes across distance and pulse
+width, the cell's response across the asymmetric biphasic waveform
+space at fixed charge per pulse, and infrastructure scaling for
+design-space sweeps that NEURON cannot run in the same time budget.
+We close with a gradient receipt that motivates the next step:
+direct optimisation of the waveform itself. All runs reported below are part
 of the curated artifact set described in the reproducibility appendix;
 wall-clock figures are on a single v5e chip unless stated otherwise.
 
@@ -77,9 +76,9 @@ straight cable, this anchors the activating-function pipeline at both
 geometric extremes: closed-form correctness on a straight cable and
 external parity on a branched real cell. The practical consequence is
 that ECS-on-Pyr in this pipeline reproduces NEURON behaviour to
-sub-millivolt residuals on a realistic morphology --- enough fidelity
-to support design-space sweeps that NEURON cannot run in the same time
-budget (\cref{sec:res-throughput}).
+sub-millivolt residuals on a realistic morphology, with enough
+fidelity to support design-space sweeps that NEURON cannot run in the
+same time budget (\cref{sec:res-throughput}).
 
 \begin{figure}[t]
   \centering
@@ -110,10 +109,9 @@ budget (\cref{sec:res-throughput}).
 
 \subsection{Strength--duration on the HH cable}\label{sec:res-sd}
 
-At a given electrode distance and pulse width, what amplitude does it
-take to evoke a spike? The strength--duration curve is the standard
-first answer to that question and underlies many downstream design
-decisions~\cite{4122088}. We define the threshold $A^*$ for a fixed
+The strength--duration curve gives the smallest amplitude that
+evokes a spike at each electrode distance and pulse width, and it
+underlies many downstream design decisions~\cite{4122088}. We define the threshold $A^*$ for a fixed
 configuration $(d, \text{polarity}, t_p)$ as the smallest electrode
 amplitude that elicits a single soma spike in the simulation:
 \[
@@ -123,10 +121,10 @@ amplitude that elicits a single soma spike in the simulation:
 Each $A^*$ is found by a one-dimensional binary search in $A$, with the
 spike-detection criterion threshold-crossing of the soma voltage (see
 \texttt{response.detect\_spike}). The full sweep is one binary search per
-$(d,\,\text{polarity},\,t_p)$ triple --- four electrode distances
+$(d,\,\text{polarity},\,t_p)$ triple, with four electrode distances
 $\{25,\,50,\,100,\,200\}\,\mu$m, three waveform polarities (monophasic
 cathodic, monophasic anodic, charge-balanced biphasic), and nine pulse
-widths from $0.05$ to $2\,$ms --- for $108$ thresholds in total.
+widths from $0.05$ to $2\,$ms, for $108$ thresholds in total.
 
 The search uses a uniform $[0,\,5000]\,\mu$A bracket with $14$
 bisection iterations, giving a resolution of $\sim\!0.3\,\mu$A; spike
@@ -165,10 +163,9 @@ the short-pulse regime.
 
 \subsection{Charge-balanced biphasic grid}\label{sec:res-grid}
 
-Asymmetric biphasic pulses are the clinical lever for trading
-activation selectivity against charge efficiency: at the same total
-delivered charge per pulse, where on the $(T_p, T_n)$ plane does the
-cell actually respond? A symmetric charge-balanced biphasic pulse has
+Asymmetric biphasic pulses vary activation selectivity and charge
+efficiency at fixed delivered charge per pulse; we map the responding
+region of the $(T_p, T_n)$ plane. A symmetric charge-balanced biphasic pulse has
 two equal-and-opposite phases of equal duration; a clinical waveform
 almost always has unequal phase durations (longer-low cathodic +
 short-high anodic, or vice versa)~\cite{wongsarnpigoon2010energy}. To characterise
@@ -193,10 +190,10 @@ asymmetric $T_p = 500\,\mu$s edge at low-to-mid amplitudes
 ($A_p \le 30\,\mu$A), and at $A_p = 80\,\mu$A for $T_p = 200\,\mu$s
 (\cref{fig:biphasic-grid}); the symmetric diagonal $T_p = T_n$ is far
 less effective at the same charge per pulse. The
-implication for waveform design is direct: asymmetry is not a marginal
-parameter --- on this cell, at this distance, swapping a symmetric
-biphasic pulse for an asymmetric one with the same charge can be the
-difference between sub-threshold and reliable spiking.
+implication for waveform design is direct: asymmetry is not a
+marginal parameter. On this cell, at this distance, swapping a
+symmetric biphasic pulse for an asymmetric one with the same charge
+can be the difference between sub-threshold and reliable spiking.
 
 \begin{figure}[t]
   \centering
@@ -257,7 +254,7 @@ history overflows the v5e's $16\,$GB chip memory at $B \ge 256$.
 on a $T_\text{sim} = 200\,$ms protocol runs at $0.286$ simulations per
 second under serial single-core NEURON (the default BBP setup), against
 $9.67$ simulations per second for Jaxley at $B = 1000$ on a single TPU
-once the JIT cache is warm --- a $\sim\!34\times$ wall-clock speedup
+once the JIT cache is warm, a $\sim\!34\times$ wall-clock speedup
 (\cref{fig:throughput}).
 NEURON has parallel-CPU variants such as
 CoreNEURON~\cite{Kumbhar2019CoreNEURONA} and
@@ -289,7 +286,7 @@ of a single TPU job.
 
 For the differentiability we built into the pipeline to matter for
 stimulation design, the gradients have to point in the right
-direction --- and their direction has to mean something physical.
+direction, and their direction has to mean something physical.
 Establishing that gradients exist (\cref{sec:results-verify}) is a
 prerequisite for, but not equivalent to, showing that they carry usable
 design signal. The position gradient reported in
@@ -306,7 +303,7 @@ charge-balance and amplitude constraints is a natural next step and is
 left as future work (\cref{sec:limitations}). What this section
 establishes is that the same pipeline that runs the empirical sweeps
 of \cref{sec:res-sd,sec:res-grid} also returns design-relevant
-gradients in a single backward pass --- placing direct waveform
+gradients in a single backward pass, placing direct waveform
 optimisation, rather than gradient-free search, within reach of the
 same compute budget.
 

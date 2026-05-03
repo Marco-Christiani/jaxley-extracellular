@@ -20,7 +20,7 @@
   basket cell is unstable in Jaxley's default integrator (NaN at
   $\sim\!30\,$ms even unstimulated), traced to BBP's
   $g_\mathrm{pas} = 1\!\times\!10^{-6}\,$S/cm$^2$ on PV apical and
-  basal --- $30\times$ lower than the Pyr value and tolerated by NEURON
+  basal, $30\times$ lower than the Pyr value and tolerated by NEURON
   but not by the Jaxley defaults. Single-compartment PV parity passes
   (\cref{sec:res-neuron}); all full-morphology runtime claims in this
   paper are therefore Pyr-only.
@@ -53,9 +53,9 @@
 
 \paragraph{Future work.}
 Three lines of follow-up sit immediately on top of what is here. First,
-restoring full PV cell coverage by stabilising the LBC integration ---
-either with an explicit smaller-timestep regime, a leak-conductance
-floor, or a stiff-aware solver --- and applying the BBP path-distance
+restoring full PV cell coverage by stabilising the LBC integration
+(either with an explicit smaller-timestep regime, a leak-conductance
+floor, or a stiff-aware solver) and applying the BBP path-distance
 $I_h$ gradient to PV apical and basal as in Pyr. Second, gradient-based
 optimisation of the free-form waveform $w(t)$ against a
 spike-elicitation surrogate, under charge-balance and amplitude

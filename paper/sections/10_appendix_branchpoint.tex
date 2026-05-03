@@ -22,9 +22,8 @@ and the Schur complement
 The same operator applies to the extracellular forcing:
 $\tilde{G}\boldsymbol{\phi}_R$ gives the activating function at the
 real compartments, where $\boldsymbol{\phi}_R$ is the field sampled at
-real compartment centres only --- the reduced operator acts only on
-real compartments, so no $\boldsymbol{\phi}_B$ value enters the
-forcing. Our implementation delegates this assembly to a
+real compartment centres only. The reduced operator acts only on real
+compartments, so no $\boldsymbol{\phi}_B$ value enters the forcing. Our implementation delegates this assembly to a
 private Jaxley helper rather than reconstructing it from scratch, so
 the operator stays in sync with upstream solver changes.
 
