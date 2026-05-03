@@ -401,7 +401,15 @@ def make_throughput_v5p4_scaling(
         font=dict(size=11),
     )
     fig.update_xaxes(title_text="batch size B (cells per vmap dispatch)", type="log", dtick=1)
-    fig.update_yaxes(title_text="throughput (cells per second)", type="log")
+    fig.update_yaxes(
+        title_text="throughput (cells per second)",
+        type="log",
+        tickvals=[0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200],
+        ticktext=[
+            "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2",
+            "5", "10", "20", "50", "100", "200",
+        ],
+    )
     n_dev = max(cheap_n_dev, full_n_dev)  # both runs are on the same pod
     fig.update_layout(
         width=900,
@@ -580,7 +588,7 @@ def make_verification(
             marker=dict(color="#d62728", size=11, symbol="diamond"),
             line=dict(color="#d62728", width=2),
             text=[f"N = {n}" for n in ncomps_arr.tolist()],
-            textposition="top right",
+            textposition=["top left", "top right", "top right", "bottom right"],
             name="measured",
             showlegend=False,
         ),
@@ -602,6 +610,8 @@ def make_verification(
     fig.update_xaxes(
         title_text="Delta x (um)",
         type="log",
+        tickvals=dxs.tolist(),
+        ticktext=[f"{v:g}" for v in dxs.tolist()],
         row=1,
         col=2,
     )
@@ -822,12 +832,15 @@ def make_strength_duration(
     n_panels = len(distances)
     cols = 2 if n_panels >= 4 else n_panels
     rows = (n_panels + cols - 1) // cols
+    # Independent y-axes per panel: each panel auto-scales to its own
+    # threshold range, instead of being squashed near the bottom of a
+    # shared 1..5000 uA log axis dominated by the bracket ceiling.
     fig = make_subplots(
         rows=rows,
         cols=cols,
-        shared_yaxes=True,
+        shared_yaxes=False,
         shared_xaxes=True,
-        horizontal_spacing=0.04,
+        horizontal_spacing=0.10,
         vertical_spacing=0.12,
         subplot_titles=tuple(f"d = {d:g} um" for d in distances),
     )
@@ -855,24 +868,29 @@ def make_strength_duration(
                 row=row,
                 col=col,
             )
-        # Bracket ceiling as a dashed reference line. Saturated points are
-        # implicit (anything that would land at this line did not spike).
-        fig.add_hline(
-            y=amp_hi,
-            line=dict(color="#999", width=1, dash="dot"),
-            row=row,
-            col=col,
-        )
 
+    log_tick_grid = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
+    pw_ticks = sorted(df["pulse_width_ms"].unique().tolist())
     for col in range(1, cols + 1):
         fig.update_xaxes(
             title_text="pulse width (ms)",
             type="log",
+            tickvals=pw_ticks,
+            ticktext=[f"{v:g}" for v in pw_ticks],
             row=rows,
             col=col,
         )
-    for row in range(1, rows + 1):
-        fig.update_yaxes(title_text="|A*| (uA)", type="log", row=row, col=1)
+    for idx in range(n_panels):
+        row = idx // cols + 1
+        col = idx % cols + 1
+        fig.update_yaxes(
+            title_text="|A*| (uA)" if col == 1 else None,
+            type="log",
+            tickvals=log_tick_grid,
+            ticktext=[str(v) for v in log_tick_grid],
+            row=row,
+            col=col,
+        )
 
     fig.update_layout(
         width=900,
@@ -937,8 +955,10 @@ def make_biphasic_grid(
                 z=sub.values,
                 zmin=vmin,
                 zmax=vmax,
-                colorscale="RdBu_r",
-                zmid=0.0,
+                # Sequential perceptually-uniform colormap: avoids the
+                # white-near-zero of a diverging map, where subthreshold
+                # cells could be misread as missing data.
+                colorscale="Viridis",
                 showscale=(col == len(aps)),
                 colorbar=dict(title="max v_soma (mV)", thickness=14, len=0.85),
                 hoverongaps=False,

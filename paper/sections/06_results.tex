@@ -49,10 +49,10 @@ $0.5\,$nA somatic step current with extracellular coupling held out
 (\texttt{parity\_bbp\_pyr}). Both simulators emit $3$ spikes
 (\cref{fig:parity-intracellular}); first-spike latency differs by
 $-50\,\mu$s ($2$ integration steps at $\Delta t = 0.025\,$ms), and AP
-peak by $+0.74\,$mV. Subthreshold
+peak by $+0.49\,$mV. Subthreshold
 waveform RMSE is $0.275\,$mV with Pearson $r = 0.9995$;
 suprathreshold full-trace RMSE is $6.032\,$mV with $r = 0.9253$, where
-the latter is dominated by the $50\,\mu$s spike-edge offset. The
+the latter is dominated by spike-edge timing offsets. The
 $-0.38\,$mV resting-potential residual is explained by our
 Euclidean-distance approximation to BBP's path-distance apical $I_h$
 gradient (\cref{sec:cells-bbp}); a path-distance traversal would close
@@ -87,7 +87,7 @@ budget (\cref{sec:res-throughput}).
   subthreshold and $0.5\,$nA suprathreshold step currents on the same
   cADpyr229 morphology. Subthreshold RMSE $0.275\,$mV
   ($r = 0.9995$); suprathreshold RMSE $6.032\,$mV
-  ($r = 0.9253$), dominated by a $-50\,\mu$s spike-edge offset
+  ($r = 0.9253$), dominated by spike-edge timing offsets
   attributable to the $700$-vs-$1131$ compartmentalisation difference.}
   \label{fig:parity-intracellular}
 \end{figure}
@@ -179,14 +179,15 @@ is one forward simulation.
 The grid has $T_p,\,T_n \in \{50,\,100,\,200,\,500\}\,\mu$s
 (four values each), $A_p \in \{10,\,20,\,30,\,40,\,80\}\,\mu$A, and
 pulse-train frequencies $f \in \{100,\,200,\,500,\,1000\}\,$Hz, for
-$315$ valid charge-balanced configurations. The full grid
+$315$ valid charge-balanced forward simulations; the five invalid
+combinations have $T_p + T_n$ equal to the $1000\,$Hz period. The full grid
 runs in $16\,$min on the v5litepod-4 pod-slice via
 \texttt{vmap}-over-configuration with hierarchical scan-checkpointing
-(\cref{sec:res-throughput}). Spike crossings concentrate in two
-regions: at the strongest amplitude ($A_p = 80\,\mu$A) for short-to-mid
-$T_p$, and along the asymmetric $T_p = 500\,\mu$s edge across all
-amplitudes (\cref{fig:biphasic-grid}); the symmetric diagonal
-$T_p = T_n$ is far less effective at the same charge per pulse. The
+(\cref{sec:res-throughput}). Spike crossings concentrate along the
+asymmetric $T_p = 500\,\mu$s edge at low-to-mid amplitudes
+($A_p \le 30\,\mu$A), and at $A_p = 80\,\mu$A for $T_p = 200\,\mu$s
+(\cref{fig:biphasic-grid}); the symmetric diagonal $T_p = T_n$ is far
+less effective at the same charge per pulse. The
 implication for waveform design is direct: asymmetry is not a marginal
 parameter --- on this cell, at this distance, swapping a symmetric
 biphasic pulse for an asymmetric one with the same charge can be the
@@ -201,8 +202,12 @@ difference between sub-threshold and reliable spiking.
   per anodic amplitude $A_p$. The dotted diagonal $T_p = T_n$ marks the
   symmetric-biphasic line; cells where $\mathit{vmax}$ crosses
   $0\,$mV correspond to a soma spike at some frequency in the sweep.
-  White cells were excluded by the constraint that $A_n = A_p\,T_p / T_n$
-  stay within the cell's stable amplitude range.}
+  White cells indicate configurations for which all simulated
+  frequencies returned non-finite voltage traces and therefore no
+  interpretable $\mathit{vmax}$; these occur mainly in the
+  long-$T_p$ high-amplitude regime. Five period-filling configurations
+  ($T_p = T_n = 500\,\mu$s at $1000\,$Hz) are absent from the
+  forward-simulation set.}
   \label{fig:biphasic-grid}
 \end{figure}
 
@@ -310,4 +315,3 @@ same compute budget.
   direction in which moving the electrode increases the soma peak.}
   \label{fig:gradient-arrow}
 \end{figure}
-

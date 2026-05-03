@@ -2,46 +2,35 @@
 \section{Background and related work}\label{sec:background}
 % =============================================================
 
-\subsection{Extracellular potential from point-source electrodes}
+\subsection{Volume-conductor field and the activating function}
 
 At neural stimulation frequencies, displacement currents in tissue are
-negligible compared with conduction currents, and Maxwell's equations
-reduce to a quasi-static formulation in which the extracellular potential
-satisfies Laplace's equation away from sources. Modelling each electrode
-contact as a point source in an infinite, homogeneous, isotropic
-conductor of conductivity $\sigma$ gives the closed-form monopole
-$\phi(\mathbf{x}) = I / (4\pi\sigma\,d)$, with $d$ the source-to-field
-distance~\cite{10.1093/acprof:oso/9780195058239.001.0001,10.1093/acprof:oso/9780195050387.001.0001}.
-Multiple electrodes follow by superposition. We use this model throughout; the homogeneity and isotropy
-assumptions are limitations we return to in \cref{sec:limitations}.
-
-\subsection{The activating function}
+negligible and the extracellular potential satisfies Laplace's equation
+away from sources, giving the closed-form monopole
+$\phi(\mathbf{x}) = I / (4\pi\sigma\,d)$ for a point source in a
+homogeneous isotropic conductor of conductivity $\sigma$~%
+\cite{10.1093/acprof:oso/9780195058239.001.0001,10.1093/acprof:oso/9780195050387.001.0001}.
+Multiple electrodes follow by superposition. We use this model
+throughout; the homogeneity and isotropy assumptions are limitations we
+return to in \cref{sec:limitations}.
 
 For a uniform straight cable in an extracellular field $\phi(x,t)$,
 Rattay~\cite{rattay1986analysis} showed that the driving term for
-transmembrane voltage is proportional to
-$\partial^2 \phi / \partial x^2$ along the cable; McNeal's earlier
-compartmental treatment of myelinated axons under monopolar
-stimulation~\cite{Mcneal1976AnalysisOA} contains the same idea in
-discrete form. On an arbitrary compartmental tree the discrete
-analogue is $[G\boldsymbol{\phi}]_j$, where $G$ is the axial diffusion
-operator that the cable solver already maintains; the continuous second
-derivative is the special case of a uniform unbranched cable. We exploit
-this in \cref{sec:method}: rather than recomputing
-$\partial^2 \phi / \partial x^2$ along each branch, we apply Jaxley's
-$G$ directly to the sampled extracellular potential.
+transmembrane voltage is proportional to $\partial^2 \phi / \partial
+x^2$ along the cable; McNeal's earlier compartmental treatment of
+myelinated axons~\cite{Mcneal1976AnalysisOA} contains the same idea in
+discrete form. On an arbitrary compartmental tree the discrete analogue
+is $[G\boldsymbol{\phi}]_j$, where $G$ is the simulator's axial
+diffusion operator, assembled internally. \cref{sec:method} shows how
+to recover $G\boldsymbol{\phi}$ from Jaxley specifically.
 
 \subsection{Differentiable neuron simulators}
 
 Jaxley~\cite{deistler2025jaxley} is the only published JAX-native
-compartmental simulator we are aware of that supports HH-style channel
-kinetics, branched morphologies, and reverse-mode autodiff through the
-time integrator. Diffrax~\cite{DBLP:journals/corr/abs-2202-02435} provides
-differentiable ODE solvers in JAX, but it does not model compartmental
-neurons. Brian2~\cite{Stimberg2019} is
-Python-native and considerably faster than NEURON, but it is not built
-for automatic differentiation. We reuse Jaxley's solver through its public
-stimulus API rather than forking the simulator: the extracellular extension
-is a JAX module that composes with the rest of the framework without
-modifying its internals.
-
+compartmental simulator with HH-style channel kinetics, branched
+morphologies, and reverse-mode autodiff through the time integrator,
+to our knowledge.
+Diffrax~\cite{DBLP:journals/corr/abs-2202-02435} provides
+differentiable ODE solvers in JAX, but does not model compartmental
+neurons. Brian2~\cite{Stimberg2019} is Python-native and considerably
+faster than NEURON, but is not built for automatic differentiation.
