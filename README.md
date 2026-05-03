@@ -2,40 +2,44 @@
 
 Building a differentiable extracellular stimulation pipeline, from electrode waveform to membrane response.
 
-## Mathematical Model
+## Mathematical model
 
 Given compartment centers and an electrode current waveform, the pipeline is:
 
-**1 - Compute extracellular potential at each compartment**
-<!-- **1 - Point-source extracellular potential** -->
+### 1. Compute extracellular potential at each compartment
 
-Let $\mathbf{x}_e \in \mathbb{R}^3$ denote the electrode position and $\mathbf{x}_j \in \mathbb{R}^3$ the centre of compartment $j$. Define the electrode-to-compartment distance:
+Let $\mathbf{x}_e \in \mathbb{R}^3$ denote electrode position and
+$\mathbf{x}_j \in \mathbb{R}^3$ the center of compartment $j$. Define
 
-$$r_j = \|\mathbf{x}_j - \mathbf{x}_e\|_2$$
+$$d_{je} = \|\mathbf{x}_j - \mathbf{x}_e\|_2.$$
 
 For a point-source electrode delivering current $I(t)$ into an infinite, homogeneous, isotropic medium of conductivity $\sigma$, the extracellular potential at compartment $j$ is:
 
-$$\phi_j(t) = \frac{I(t)}{4\pi\sigma r_j}$$
+$$\phi_j(t) = \frac{I(t)}{4\pi\sigma d_{je}}.$$
 
-**Units.** With $I(t)$ in uA, $\sigma$ in S/m, and $r_j$ in um, the $10^{-6}$ factors in numerator and denominator cancel exactly, and multiplying by $10^3$ to convert V to mV gives the working formula:
+With $I(t)$ in uA, $\sigma$ in S/m, and $d_{je}$ in um, the $10^{-6}$
+factors in numerator and denominator cancel, and multiplying by $10^3$
+to convert V to mV gives the working formula:
 
-$$\phi_j(t) \ [\text{mV}] = \frac{I(t) \ [\mu\text{A}] \cdot 10^3}{4\pi\,\sigma \ [\text{S/m}] \cdot r_j \ [\mu\text{m}]}$$
+$$\phi_j(t) \ [\text{mV}] = \frac{I(t) \ [\mu\text{A}] \cdot 10^3}{4\pi\,\sigma \ [\text{S/m}] \cdot d_{je} \ [\mu\text{m}]}.$$
 
-The spatial dependence and time dependence are fully separable. Defining the transfer factor:
+Defining the transfer factor
 
-$$h_j = \frac{10^3}{4\pi\sigma r_j} \quad [\text{mV}/\mu\text{A}]$$
+$$h_j = \frac{10^3}{4\pi\sigma d_{je}} \quad [\text{mV}/\mu\text{A}],$$
 
-the potential is $\phi_j(t) = h_j \cdot I(t)$, which is the factorization implemented as `prefactor` in `point_source_potential`. For a waveform $I(t)$ sampled at $T$ timesteps, $\Phi$ is the outer product $\mathbf{h} \otimes \mathbf{I} \in \mathbb{R}^{N_\text{comp} \times T}$. Notice that $\Phi_{jt} = \phi_j(t)$ and it is more natural to index into $\Phi$ in code (it is a matrix) and prefer $\phi_j(t)$ in formulations (since we are always considering functions of time). Therefore, the matrix constructed in `point_source_potential` is exactly $\Phi$.
+the potential is $\phi_j(t) = h_j I(t)$. For a waveform sampled at $T$
+timesteps, the matrix constructed in `point_source_potential` is
+$\boldsymbol{\Phi} \in \mathbb{R}^{N_\text{comp} \times T}$ with
+$\boldsymbol{\Phi}_{jt} = \phi_j(t)$.
 
-<!-- `phi_e [mV] = I [uA] * 1e3 / (4 * pi * sigma [S/m] * r [um])` -->
 Implemented in
 
 `src/jaxley_extracellular/extracellular/field.py::point_source_potential`.
 
-**2 - Build the voltage diffusion operator `G` (units `1/ms`) consistent with Jaxley**
+### 2. Build the voltage diffusion operator `G`
 
-  <!-- `dv/dt [mV/ms] = G [1/ms] @ v [mV] + membrane_terms` -->
-**The voltage diffusion operator**
+The operator has units `1/ms` and is built from the same transition matrix
+that Jaxley uses internally.
 
 The axial coupling term in the cable equation is governed by a linear operator $G \in \mathbb{R}^{N_\text{comp} \times N_\text{comp}}$ assembled from the axial conductances of the cable. Its entries are:
 
@@ -49,20 +53,20 @@ In matrix form over all compartments simultaneously:
 
 $$\frac{d\mathbf{v}}{dt} = G\mathbf{v} + \text{membrane terms}$$
 
-where $\mathbf{v} \in \mathbb{R}^{N_\text{comp}}$ is the vector of transmembrane voltages. $G$ is a sparse, symmetric, negative-semidefinite matrix with row sums being zero by construction, encoding current conservation.
+where $\mathbf{v} \in \mathbb{R}^{N_\text{comp}}$ is the vector of transmembrane voltages. For a uniform cable, $G$ is sparse, symmetric, negative semidefinite, and has zero row sums.
 
-**Branchpoint elimination.** Jaxley's internal wiring includes branchpoint pseudo-nodes at cable junctions. These nodes carry no membrane and appear only to enforce Kirchhoff's current law at branch points. `build_voltage_operator_G` eliminates them via Gaussian substitution (the same procedure Jaxley performs internally) producing a reduced operator defined only over real compartments $G \in \mathbb{R}^{N_\text{comp} \times N_\text{comp}}$.
+Jaxley's internal wiring includes branchpoint pseudo-nodes at cable junctions. These nodes carry no membrane and appear only to enforce Kirchhoff's current law at branch points. `build_voltage_operator_G` eliminates them via Gaussian substitution, the same procedure Jaxley performs internally, producing a reduced operator defined only over real compartments $G \in \mathbb{R}^{N_\text{comp} \times N_\text{comp}}$.
 
-**Extracellular coupling.** By linearity of $G$, the extracellular forcing enters through the same operator:
+By linearity of $G$, the extracellular forcing enters through the same operator:
 
 $$G(\mathbf{v} + \boldsymbol{\phi}_e) = G\mathbf{v} + G\boldsymbol{\phi}_e$$
 
-The term $G\boldsymbol{\phi}_e \in \mathbb{R}^{N_\text{comp}}$ is the activating function which is the discrete Laplacian of the extracellular potential along the cable. For a uniform straight cable with compartment spacing $\Delta x$ it approximates $\frac{\partial^2 \phi_e}{\partial x^2}$ to $O(\Delta x^2)$.
+The term $G\boldsymbol{\phi}_e \in \mathbb{R}^{N_\text{comp}}$ is the activating function, the discrete Laplacian of the extracellular potential along the cable. For a uniform straight cable with compartment spacing $\Delta x$ it approximates $\frac{\partial^2 \phi_e}{\partial x^2}$ to $O(\Delta x^2)$.
 
 Implemented in
 `src/jaxley_extracellular/extracellular/discretization.py::build_voltage_operator_G`.
 
-**3 - Convert extracellular forcing into equivalent injected current.**
+### 3. Convert extracellular forcing into equivalent injected current
 
 The extracellular forcing term $G\boldsymbol{\phi}_e(t)$ has units mV/ms, a rate of voltage change matching the right-hand side of the cable equation. Jaxley's public stimulus API however accepts current in nA, which it internally converts via:
 
@@ -81,7 +85,7 @@ where $\odot$ denotes elementwise multiplication broadcast over the time axis an
 Implemented as:
 
 ```python
-# See src/jaxley_extracellular/extracellular/equivalent_current.py::phi_e_to_ecs_nA`
+# See src/jaxley_extracellular/extracellular/equivalent_current.py::phi_e_to_ecs_nA
 
 # f_ecs [mV/ms]: induced rate-of-change from extracellular gradient
 f_ecs: Array = G @ phi_e_mV  # (Ncomp, T)
@@ -96,11 +100,11 @@ i_ecs_nA: Array = i_density * area_um2[:, jnp.newaxis] / 1e5  # (Ncomp, T)
 
 ```
 
-**4 - Package into Jaxley stimulation inputs and integrate over time.**
+### 4. Package into Jaxley stimulation inputs and integrate over time
 
 ---
 
-**Relationship to the second derivative**
+### Relationship to the second derivative
 
 We compute
 $$[G\phi_e]_i = g(\phi_{i-1} - 2\phi_i + \phi_{i+1})$$
@@ -186,11 +190,11 @@ waveform_uA = make_biphasic_pulse(
 # 3) Compute phi_e [mV] at compartment centers.
 ensure_compartment_centers(branch)
 comp_xyz = get_compartment_xyz(branch)
-electrode_pos = jnp.array([50.0, 50.0, 0.0])  # um
+electrode_positions = jnp.array([[50.0, 50.0, 0.0]])  # um
 phi_e_mV = point_source_potential(
     comp_xyz=comp_xyz,
-    electrode_pos=electrode_pos,
-    electrode_current=waveform_uA,
+    electrode_positions=electrode_positions,
+    electrode_currents=waveform_uA[jnp.newaxis, :],
     sigma=0.3,
 )
 

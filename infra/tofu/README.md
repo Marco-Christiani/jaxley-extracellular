@@ -80,8 +80,7 @@ iap_users = ["user:you@gmail.com"]
 
 ## Known operational quirks
 
-These all hit at least twice during the 2026-04-29 paper-finalization session.
-Read before you bring up or tear down the stack.
+Read before bringing up or tearing down the stack.
 
 - **Cloud SQL teardown via `tofu destroy` always fails after MLflow has
   populated the tracking schema.** The `tracker` SQL user owns ~48 mlflow
@@ -111,8 +110,7 @@ Read before you bring up or tear down the stack.
   would install Google's internal CA on the tracker, or pin google-auth
   to a version that uses HTTP for metadata refresh.
 - **Cloud SQL boot is the long pole on apply** (~10-12 min before the
-  instance reaches `RUNNABLE`). `tofu apply` blocks until it's up. Don't
-  panic-fix.
+  instance reaches `RUNNABLE`). `tofu apply` blocks until the instance is up.
 
 ## Provisioning
 
@@ -281,7 +279,7 @@ http://127.0.0.1:45137   # MLflow
 task remote:tunnels:down
 ```
 
-Important:
+Notes:
 - Ray dashboard metrics require Grafana + Prometheus; a running Ray head alone is not sufficient
 - if local ports collide with another project, override them in `task remote:tunnels:up`
 - `task remote:tunnels:status` shows the tracked tunnel PIDs and local listeners
