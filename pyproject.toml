@@ -12,7 +12,6 @@ dependencies = [
   "jax==0.8.1",
   # Core deps
   "numpy>=1.26",
-  "matplotlib>=3.8",
   # Jaxley ecosystem
   "jaxley>=0.8.0",
   "jaxley-mech>=0.2.0",
@@ -72,6 +71,12 @@ tpu = [
 ]
 tracking = [
     "mlflow[db]>=2.12",
+]
+docs = [
+    "sphinx>=7.3",
+    "furo>=2024.1",
+    "myst-parser>=3.0",
+    "sphinx-autodoc-typehints>=2.0",
 ]
 
 [tool.uv.extra-build-dependencies]

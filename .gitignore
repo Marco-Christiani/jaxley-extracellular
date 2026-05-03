@@ -209,6 +209,8 @@ __marimo__/
 .*
 !.gitignore
 !.envrc
+!.github/
+!.github/**
 !.terraform.lock.hcl
 !infra/tofu/.terraform.lock.hcl
 *.local.*
@@ -244,4 +246,3 @@ paper/*.synctex.gz
 
 # upstream neurips sample template (style file is tracked, sample is reference only)
 paper/neurips_2024.tex
-

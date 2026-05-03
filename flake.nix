@@ -150,11 +150,67 @@
           jaxley-extracellular = ["dev"];
         };
 
+        figuresDeps = {
+          jaxley-extracellular = ["dev"];
+        };
+
+        docsDeps = {
+          jaxley-extracellular = ["docs"];
+        };
+
         gpuVenv = pythonSetGpu.mkVirtualEnv "jaxley-extracellular-gpu" gpuDeps;
         tpuVenv = pythonSetTpu.mkVirtualEnv "jaxley-extracellular-tpu" tpuDeps;
         devVenv = editablePythonSetGpu.mkVirtualEnv "jaxley-extracellular-dev" devGpuDeps;
         devTpuVenv = editablePythonSetTpu.mkVirtualEnv "jaxley-extracellular-dev-tpu" devTpuDeps;
         testVenv = pythonSetGpu.mkVirtualEnv "jaxley-extracellular-test" testDeps;
+        figuresVenv = pythonSetGpu.mkVirtualEnv "jaxley-extracellular-figures" figuresDeps;
+        docsVenv = pythonSetGpu.mkVirtualEnv "jaxley-extracellular-docs" docsDeps;
+
+        paperArtifacts = pkgs.fetchurl {
+          url = "https://github.com/Marco-Christiani/jaxley-extracellular/releases/download/paper-v0.1/paper-artifacts.tar.gz";
+          hash = "sha256-hYPyGFEceHv4NIulAsZNaplXKbRUoBAEuA1+6IzmyqA=";
+        };
+
+        docsPackage = pkgs.stdenvNoCC.mkDerivation {
+          name = "jaxley-extracellular-docs";
+          src = ./.;
+          nativeBuildInputs = [docsVenv];
+          buildPhase = ''
+            runHook preBuild
+            # Autodoc imports jaxley/jaxley-mech, which import matplotlib transitively.
+            # Keep matplotlib's font cache inside the sandbox instead of /homeless-shelter.
+            export MPLCONFIGDIR="$TMPDIR/matplotlib"
+            sphinx-build -b html docs "$out" -q
+            touch "$out/.nojekyll"
+            runHook postBuild
+          '';
+          installPhase = ":";
+        };
+
+        paperFiguresPackage = pkgs.stdenvNoCC.mkDerivation {
+          name = "jaxley-extracellular-paper-figures";
+          src = ./.;
+          nativeBuildInputs = [
+            figuresVenv
+            pkgs.chromium
+          ];
+          buildPhase = ''
+            runHook preBuild
+            export HOME="$TMPDIR/home"
+            export XDG_CACHE_HOME="$TMPDIR/cache"
+            export MPLCONFIGDIR="$TMPDIR/matplotlib"
+            export BROWSER_PATH="${pkgs.chromium}/bin/chromium"
+            mkdir -p "$HOME" "$XDG_CACHE_HOME" results
+            rm -rf results/paper_package paper/figures
+            tar -xzf ${paperArtifacts} -C results
+            python -m paper.make_figures --which all
+            runHook postBuild
+          '';
+          installPhase = ''
+            mkdir -p "$out"
+            cp -R paper/figures/. "$out/"
+          '';
+        };
 
         # Bundle for Ray-on-TPU.
         #
@@ -377,6 +433,8 @@
 
         packages.gpu = gpuVenv;
         packages.tpu = tpuWorkerEnv;
+        packages.docs = docsPackage;
+        packages.paper-figures = paperFiguresPackage;
 
         apps.gpu = {
           type = "app";
@@ -427,6 +485,36 @@
           };
         };
 
+        apps.paper-figures = {
+          type = "app";
+          program = "${pkgs.writeShellScript "paper-figures" ''
+            set -euo pipefail
+            root="$(${pkgs.git}/bin/git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            cd "$root"
+            mkdir -p results
+            rm -rf results/paper_package
+            tar -xzf ${paperArtifacts} -C results
+            export BROWSER_PATH="${pkgs.chromium}/bin/chromium"
+            exec "${devVenv}/bin/python" -m paper.make_figures --which "''${1:-all}"
+          ''}";
+          meta = {
+            description = "Regenerate paper figures from the release artifact bundle.";
+          };
+        };
+
+        apps.docs = {
+          type = "app";
+          program = "${pkgs.writeShellScript "jaxley-extracellular-docs" ''
+            set -euo pipefail
+            root="$(${pkgs.git}/bin/git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            "${docsVenv}/bin/sphinx-build" "$root/docs" "$root/docs/_build/html" -q
+            exec "${docsVenv}/bin/python" -m http.server 8001 -d "$root/docs/_build/html"
+          ''}";
+          meta = {
+            description = "Build and serve Furo documentation.";
+          };
+        };
+
         checks = let
           mkCheck = name: buildPhase:
             pkgs.stdenvNoCC.mkDerivation {
@@ -440,7 +528,10 @@
                 mkdir -p $out
               '';
             };
+
         in {
+          docs = docsPackage;
+
           pytest = mkCheck "jaxley-extracellular-pytest" ''
             export JAX_PLATFORMS=cpu
             ${testVenv}/bin/pytest -q
